@@ -1,0 +1,1 @@
+`nodable-LICENSE` — MIT license from https://github.com/nodable/val-parsers/blob/main/LICENSE, downloaded 2026-11-15. The npm package `@nodable/entities` 3.1.0 declares MIT but omits the license file. This upstream copy is included in the generated third-party notices. Other dependency licenses are read directly from their installed packages during the build.

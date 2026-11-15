@@ -1,0 +1,105 @@
+{
+  "name": "vscode-reader",
+  "displayName": "VSCodeReader",
+  "description": "Read EPUB books in a quiet terminal tab.",
+  "version": "0.0.1",
+  "publisher": "alexChurkin",
+  "private": true,
+  "license": "UNLICENSED",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/alexChurkin/VSCodeReader.git"
+  },
+  "engines": {
+    "vscode": "^1.95.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "main": "./dist/extension.cjs",
+  "activationEvents": [
+    "onCommand:vscodeReader.openBook",
+    "onCommand:vscodeReader.resume"
+  ],
+  "capabilities": {
+    "untrustedWorkspaces": {
+      "supported": true
+    },
+    "virtualWorkspaces": {
+      "supported": false
+    }
+  },
+  "contributes": {
+    "commands": [
+      {
+        "command": "vscodeReader.openBook",
+        "title": "VSCodeReader: Open Book"
+      },
+      {
+        "command": "vscodeReader.resume",
+        "title": "VSCodeReader: Resume Reading"
+      },
+      {
+        "command": "vscodeReader.hide",
+        "title": "VSCodeReader: Hide Text"
+      }
+    ],
+    "menus": {
+      "explorer/context": [
+        {
+          "command": "vscodeReader.openBook",
+          "when": "resourceExtname == .epub",
+          "group": "navigation@90"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "VSCodeReader",
+      "properties": {
+        "vscodeReader.terminalName": {
+          "type": "string",
+          "default": "output",
+          "description": "Neutral name for the reader terminal."
+        },
+        "vscodeReader.linePrefix": {
+          "type": "string",
+          "default": "",
+          "maxLength": 12,
+          "description": "Optional console-style prefix, for example [text] ."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "build": "node esbuild.mjs",
+    "watch": "node esbuild.mjs --watch",
+    "typecheck": "tsc --noEmit",
+    "test": "node --import tsx --test test/*.test.ts",
+    "check": "npm run typecheck && npm test && npm run build",
+    "vscode:prepublish": "npm run build",
+    "package": "vsce package --no-dependencies --allow-missing-repository",
+    "test:host": "npm run build && node scripts/test-host.mjs"
+  },
+  "dependencies": {
+    "domhandler": "6.0.1",
+    "fast-xml-parser": "5.12.1",
+    "htmlparser2": "12.0.0",
+    "string-width": "9.0.0",
+    "yauzl": "3.4.0"
+  },
+  "devDependencies": {
+    "@types/node": "22.20.5",
+    "@types/vscode": "1.95.0",
+    "@types/yauzl": "3.4.0",
+    "@vscode/test-electron": "3.1.0",
+    "@vscode/vsce": "4.1.1",
+    "esbuild": "0.28.2",
+    "tsx": "4.23.15",
+    "typescript": "7.0.2"
+  },
+  "overrides": {
+    "@vscode/vsce": {
+      "minimatch": "^11.0.1"
+    }
+  }
+}
