@@ -22,9 +22,11 @@
 
 ## Запуск
 
-1. Установите `vscode-reader-0.1.0.vsix` через **Extensions: Install from VSIX…**.
+1. [Скачайте актуальный VSIX из GitHub Releases](https://github.com/alexChurkin/VSCodeReader/releases/latest/download/vscode-reader-0.1.0.vsix) и установите через **Extensions: Install from VSIX…**.
 2. Нажмите **значок книги** на левой панели Activity Bar: откроется **Reader → Library**.
 3. Нажмите **Open book…** и выберите файл. Для продолжения позже используйте **Continue reading**.
+
+После успешных проверок `main` автоматически обновляется единственный [GitHub Release 0.1.0](https://github.com/alexChurkin/VSCodeReader/releases/tag/v0.1.0), его VSIX и контрольная сумма SHA-256.
 
 Версия остаётся **0.1.0**: каждая сборка заменяет `vscode-reader-0.1.0.vsix` и удаляет устаревшие VSIX проекта.
 

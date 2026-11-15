@@ -7,3 +7,4 @@
 - Preserve the terminal reading interface and the book icon / Library sidebar. PDF support is deferred at the user's request.
 - Name terminal tabs after the book by default and preserve the dim contextual footer. Closing a PTY must acknowledge exit and release the session; trash and `q` should work immediately.
 - Keep the current page, total pages and percentage visible in the bottom reading bar; page status takes priority over hints and notifications on narrow terminals.
+- Publish the installer as the single GitHub Release `v0.1.0` after successful main builds, replacing the VSIX and checksum assets. Do not treat a local VSIX or an Actions artifact alone as the release.

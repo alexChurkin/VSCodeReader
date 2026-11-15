@@ -22,9 +22,11 @@ Ordinary `.zip` files are not treated as books. PDF and MOBI/AZW3 are not suppor
 
 ## Get started
 
-1. Install `vscode-reader-0.1.0.vsix` using **Extensions: Install from VSIX…**.
+1. [Download the current VSIX from GitHub Releases](https://github.com/alexChurkin/VSCodeReader/releases/latest/download/vscode-reader-0.1.0.vsix) and install it using **Extensions: Install from VSIX…**.
 2. Click the **book icon** in the left Activity Bar to open **Reader → Library**.
 3. Click **Open book…** and choose a supported file. Click **Continue reading** to resume later.
+
+Successful checks on `main` automatically update the single [GitHub Release 0.1.0](https://github.com/alexChurkin/VSCodeReader/releases/tag/v0.1.0), its VSIX and SHA-256 checksum.
 
 The version stays at **0.1.0**; each package build replaces `vscode-reader-0.1.0.vsix` and removes obsolete project VSIX files.
 
