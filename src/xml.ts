@@ -37,31 +37,47 @@ export function xml(source: string) {
   return parseDocument(source, { xmlMode: true, decodeEntities: true });
 }
 
-export function chapterText(source: string): { text: string; anchors: Record<string, number> } {
+export interface ImageReference { href: string; label: string; offset: number }
+export function chapterText(source: string) {
   const doc = parseDocument(source, { decodeEntities: true });
   const body = elements(doc, 'body')[0] ?? doc;
+  return renderNodes(body.children);
+}
+export function renderNodes(nodes: AnyNode[], fb2 = false): { text: string; anchors: Record<string, number>; images: ImageReference[] } {
   const ignored = new Set(['script', 'style', 'head', 'iframe', 'object', 'embed', 'form', 'svg', 'audio', 'video']);
-  const blocks = new Set(['p', 'div', 'section', 'article', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'li', 'blockquote', 'pre', 'tr', 'dt', 'dd']);
+  const blocks = new Set([...(fb2 ? ['title', 'subtitle', 'epigraph', 'annotation', 'poem', 'stanza', 'v', 'cite', 'text-author'] : []), 'p', 'div', 'section', 'article', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'li', 'blockquote', 'pre', 'tr', 'dt', 'dd']);
   let output = '';
   const anchors: Record<string, number> = Object.create(null);
+  const images: ImageReference[] = [];
   const boundary = () => { if (output && !output.endsWith('\n')) output += '\n\n'; };
-  const stack: Array<{ node: AnyNode; end?: boolean }> = [...body.children].reverse().map(node => ({ node }));
+  const stack: Array<{ node: AnyNode; end?: boolean }> = [...nodes].reverse().map(node => ({ node }));
   while (stack.length) {
     const { node, end } = stack.pop()!;
     if (node.type === 'text') { output += safeText(node.data).replace(/\s+/g, ' '); continue; }
     if (!isElement(node)) continue;
     const tag = localName(node.name);
+    if (tag === 'svg') {
+      for (const image of elements(node, 'image')) {
+        const href = image.attribs['xlink:href'] ?? image.attribs.href ?? Object.entries(image.attribs).find(([key]) => key.endsWith(':href'))?.[1];
+        if (href) images.push({ href, label: 'illustration', offset: output.length });
+      }
+    }
     if (ignored.has(tag) || node.attribs.hidden !== undefined || node.attribs['aria-hidden'] === 'true') continue;
     if (end) { if (blocks.has(tag)) boundary(); continue; }
     if (blocks.has(tag)) boundary();
     if (node.attribs.id) anchors[node.attribs.id] = output.length;
-    if (tag === 'br') output += '\n';
-    else if (tag === 'img') output += `[image: ${safeText(node.attribs.alt || 'illustration').replace(/\s+/g, ' ')}]`;
+    if (tag === 'br' || (fb2 && tag === 'empty-line')) output += '\n';
+    else if (tag === 'img' || tag === 'image') {
+      const href = node.attribs.src ?? node.attribs['xlink:href'] ?? node.attribs.href ?? Object.entries(node.attribs).find(([key]) => key.endsWith(':href'))?.[1];
+      const label = safeText(node.attribs.alt || node.attribs.title || 'illustration').replace(/\s+/g, ' ');
+      if (href) images.push({ href, label, offset: output.length });
+      output += `[image: ${label}]`;
+    }
     else {
       stack.push({ node, end: true });
       for (let i = node.children.length - 1; i >= 0; i--) stack.push({ node: node.children[i] });
     }
   }
   // Keep anchor offsets valid: no global trim/collapse after collecting them.
-  return { text: output || '[empty chapter]', anchors };
+  return { text: output || '[empty chapter]', anchors, images };
 }

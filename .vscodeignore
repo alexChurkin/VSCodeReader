@@ -17,3 +17,5 @@ dist/host.cjs.LEGAL.txt
 
 .test-system/**
 licenses/**
+
+.vscode-test/**

@@ -1,4 +1,4 @@
-import { deflateRawSync } from 'node:zlib';
+import { deflateRawSync, deflateSync } from 'node:zlib';
 
 function crc32(buffer: Buffer): number {
   let crc = 0xffffffff;
@@ -46,3 +46,13 @@ export function epub(version = '3.0', options: { fixed?: boolean; chapter?: stri
   ];
   return zip(files);
 }
+
+const pngChunk = (type: string, data: Buffer) => {
+  const name = Buffer.from(type);
+  const size = Buffer.alloc(4); size.writeUInt32BE(data.length);
+  const crc = Buffer.alloc(4); crc.writeUInt32BE(crc32(Buffer.concat([name, data])));
+  return Buffer.concat([size, name, data, crc]);
+};
+const ihdr = Buffer.alloc(13); ihdr.writeUInt32BE(1, 0); ihdr.writeUInt32BE(1, 4); ihdr[8] = 8; ihdr[9] = 6;
+export const png = Buffer.concat([Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]), pngChunk('IHDR', ihdr), pngChunk('IDAT', deflateSync(Buffer.from([0, 255, 0, 0, 255]))), pngChunk('IEND', Buffer.alloc(0))]);
+export const fb2 = `<?xml version="1.0" encoding="UTF-8"?><FictionBook xmlns="http://www.gribuser.ru/xml/fictionbook/2.0" xmlns:l="http://www.w3.org/1999/xlink"><description><title-info><author><first-name>Иван</first-name><last-name>Автор</last-name></author><book-title>Тестовая книга</book-title></title-info></description><body><section id="first"><title><p>Начало</p></title><p>Текст первой главы.</p><image l:href="#picture"/><section id="nested"><title><p>Вложенная глава</p></title><poem><stanza><v>Строка первая</v><v>Строка вторая</v></stanza></poem></section><p>После вложенной главы.</p></section><section><title><p>Продолжение</p></title><p>Дальше.</p></section></body><body name="notes"><section id="note"><title><p>Примечания</p></title><p>Текст примечания.</p></section></body><binary id="picture" content-type="image/png">${png.toString('base64')}</binary></FictionBook>`;

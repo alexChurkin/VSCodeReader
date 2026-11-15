@@ -1,5 +1,6 @@
 import * as vscode from 'vscode';
 import assert from 'node:assert/strict';
+import { zip, fb2, png } from './fixtures';
 import { ReaderTerminal } from '../src/terminal';
 import { restoreState, type Book, type ReadingState } from '../src/book';
 
@@ -58,5 +59,37 @@ export async function run(): Promise<void> {
   const reopened = vscode.window.terminals.find(t => !previous.has(t));
   assert.ok(reopened, 'Resume reopens the last closed book');
   reopened.dispose();
-  console.log('VS Code host checks passed: terminal output, navigation, hide, resize, bookmarks, worker, reopen.');
+  await until(() => !vscode.window.terminals.includes(reopened));
+  const directory = vscode.Uri.joinPath(extension.extensionUri, '.vscode-test', 'reader-fixtures');
+  await vscode.workspace.fs.createDirectory(directory);
+  const fixtures: Array<[string, Uint8Array, boolean]> = [
+    ['sample.fb2', Buffer.from(fb2), true],
+    ['sample.fb2.zip', zip([['nested/book.fb2', fb2]]), true],
+    ['sample.fbz', zip([['book.fb2', fb2]]), false],
+    ['sample.txt', Buffer.from('Text file\n\nПривет'), false],
+    ['comic.cbz', zip([['page10.png', png], ['page2.png', png]]), true]
+  ];
+  for (const [name, bytes, hasImage] of fixtures) {
+    const uri = vscode.Uri.joinPath(directory, name);
+    await vscode.workspace.fs.writeFile(uri, bytes);
+    const before = new Set(vscode.window.terminals);
+    await vscode.commands.executeCommand('vscodeReader.openBook', uri);
+    const session = vscode.window.terminals.find(t => !before.has(t));
+    assert.ok(session, `${name} should open a terminal`);
+    if (hasImage) {
+      // A single embedded image or explicit comic page bypasses the picker.
+      await vscode.commands.executeCommand('vscodeReader.openImage', name.endsWith('.cbz') ? 'page2.png' : undefined);
+      let imageTab: vscode.Tab | undefined;
+      await until(() => {
+        imageTab = vscode.window.tabGroups.all.flatMap(group => group.tabs).find(tab => tab.input instanceof vscode.TabInputCustom && tab.input.uri.path.endsWith('.png'));
+        return !!imageTab;
+      });
+      assert.ok(imageTab && imageTab.input instanceof vscode.TabInputCustom);
+      assert.deepEqual(Buffer.from(await vscode.workspace.fs.readFile(imageTab.input.uri)), png);
+      await vscode.window.tabGroups.close(imageTab);
+    }
+    session.dispose();
+    await until(() => !vscode.window.terminals.includes(session));
+  }
+  console.log('VS Code host checks passed: EPUB, FB2, FB2.ZIP, FBZ, TXT, CBZ, native image tabs, navigation, hide, resize, bookmarks and reopen.');
 }

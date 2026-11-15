@@ -5,7 +5,13 @@ export interface Chapter {
   anchors: Record<string, number>;
 }
 export interface TocItem { title: string; chapter: number; offset: number; depth: number }
-export interface Book { title: string; author: string; chapters: Chapter[]; toc: TocItem[] }
+export interface BookImage {
+  id: string;
+  label: string;
+  mediaType: string;
+  chapters: number[];
+}
+export interface Book { title: string; author: string; chapters: Chapter[]; toc: TocItem[]; images?: BookImage[] }
 export interface Locator { chapter: number; offset: number }
 export interface Bookmark extends Locator { label: string }
 export interface ReadingState extends Locator { version: 1; bookmarks: Bookmark[] }

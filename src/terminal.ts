@@ -1,5 +1,5 @@
 import * as vscode from 'vscode';
-import { type Book, type ReadingState, safeText } from './book';
+import { type Book, type ReadingState, type BookImage, safeText } from './book';
 import { Screen, findMatches } from './screen';
 
 const CLEAR = '\x1b[2J\x1b[3J\x1b[H';
@@ -13,7 +13,7 @@ export class ReaderTerminal implements vscode.Pseudoterminal {
   private timer: ReturnType<typeof setTimeout> | undefined;
   private pending = '';
   private escapeWasHidden = true;
-  constructor(book: Book, prefix: string, private state: ReadingState, private persist: (state: ReadingState) => void) {
+  constructor(book: Book, prefix: string, private state: ReadingState, private persist: (state: ReadingState) => void, private imagePreview?: (image: BookImage) => Promise<void>) {
     this.screen = new Screen(book, prefix, state);
   }
   open(dimensions?: vscode.TerminalDimensions): void {
@@ -85,6 +85,7 @@ export class ReaderTerminal implements vscode.Pseudoterminal {
     else if (data === 'p') this.screen.nextChapter(-1);
     else if (data === 'g') { void this.prompt('toc'); return; }
     else if (data === '/') { void this.prompt('search'); return; }
+    else if (data === 'i') { void this.showImages(); return; }
     else if (data === 'B') { void this.prompt('bookmarks'); return; }
     else if (data === 'b') {
       const locator = this.screen.locator;
@@ -97,6 +98,25 @@ export class ReaderTerminal implements vscode.Pseudoterminal {
     else return;
     this.changed();
   }
+  async showImages(id?: string, all = false): Promise<void> {
+    if (this.closed || this.busy) return;
+    this.busy = true;
+    try {
+      const images = this.screen.book.images ?? [];
+      if (!images.length || !this.imagePreview) { vscode.window.setStatusBarMessage('No supported embedded images in this book', 2500); return; }
+      const ordered = [...images].sort((a, b) => Number(b.chapters.includes(this.screen.chapter)) - Number(a.chapters.includes(this.screen.chapter)));
+      let image: BookImage | undefined;
+      if (id !== undefined) {
+        image = images.find(item => item.id === id);
+        if (!image) throw new Error('Image is not part of this book.');
+      } else if (images.length === 1) image = images[0];
+      else if (!all && images.filter(item => item.chapters.includes(this.screen.chapter)).length === 1) image = images.find(item => item.chapters.includes(this.screen.chapter));
+      else image = (await vscode.window.showQuickPick(ordered.map(item => ({ label: item.label, description: item.chapters.includes(this.screen.chapter) ? 'Current chapter' : 'Book image', image: item })), { title: 'Open illustration', matchOnDescription: true }))?.image;
+      if (image && !this.closed) await this.imagePreview(image);
+    } catch (error) {
+      if (!this.closed) void vscode.window.showErrorMessage(`Reader: ${safeText(error instanceof Error ? error.message : String(error))}`);
+    } finally { this.busy = false; }
+  }
   private async prompt(kind: 'toc' | 'search' | 'bookmarks' | 'help'): Promise<void> {
     this.busy = true;
     try {
@@ -104,7 +124,7 @@ export class ReaderTerminal implements vscode.Pseudoterminal {
         await vscode.window.showQuickPick([
           'j/k or arrows: move one line', 'Space / PageDown / PageUp: move one screen',
           'n/p: next / previous chapter', 'g: table of contents', '/: search book (first 200 matches)',
-          'b: bookmark current position; B: list bookmarks', 'Escape: hide text; Resume Reading command: continue'
+          'b: bookmark current position; B: list bookmarks', 'i: open an illustration in an editor tab', 'Escape: hide text; Resume Reading command: continue'
         ], { title: 'Reader keys' });
         return;
       }

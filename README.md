@@ -1,57 +1,81 @@
 # VSCodeReader
 
-EPUB-читалка для VS Code, которая выглядит как обычная консольная вкладка. Открывает книгу в нижней панели **Terminal** с нейтральным именем `output`, моноширинным текстом и цветами вашего терминала.
+**English** · [Русский](README.ru.md)
 
-Первый рабочий прототип `0.0.1`: EPUB 2/3, оглавление, поиск по книге, закладки и сохранение позиции. FB2 и FB2.ZIP — следующий этап. [План](docs/IMPLEMENTATION_PLAN.md) · [Принятые решения и ограничения](docs/ADR-001-terminal-reader.md).
+Read books in VS Code in a tab that looks like console output. VSCodeReader uses a real **Terminal** tab named `output`, your terminal font and colors, and keyboard navigation. Illustrations open on demand in separate editor tabs.
 
-## Запуск
+Version **0.0.2** supports EPUB, FictionBook, plain text and CBZ comics. [Implementation plan (Russian)](docs/IMPLEMENTATION_PLAN.md) · [Architecture decisions (Russian)](docs/ADR-001-terminal-reader.md).
 
-1. `npm ci` — установить зависимости (Node.js 22).
-2. Открыть репозиторий в VS Code и нажать F5 (`Run VSCodeReader`).
-3. В новом окне выполнить **VSCodeReader: Open Book** и выбрать `.epub`. Для проверки есть [Alice](samples/README.md).
+## Supported formats
 
-Или собрать `npm run package`, затем выполнить **Extensions: Install from VSIX…** и выбрать `vscode-reader-0.0.1.vsix`. Минимальная версия VS Code — 1.95.0.
-
-В Explorer для `.epub` доступно контекстное действие Open Book. Книга открывается без изменения исходного файла. Повторное открытие того же URI показывает уже существующую сессию.
-
-## Управление
-
-Когда фокус находится в терминале читалки:
-
-| Клавиши | Действие |
+| Format | Support |
 | --- | --- |
-| `j` / `k`, ↓ / ↑ | Строка вперёд / назад |
-| Space / PageDown, PageUp | Экран вперёд / назад |
-| `n` / `p` | Следующая / предыдущая глава |
-| `g` | Оглавление |
-| `/` | Поиск по книге, до 200 совпадений |
-| `b` | Поставить закладку |
-| `B` | Перейти к закладке |
-| `?` | Справка |
-| Escape | Скрыть текст, очистить экран, показать `ready` |
+| EPUB 2 / EPUB 3 (`.epub`) | Reflowable text, spine order, nav/NCX table of contents, embedded raster images |
+| FictionBook 2 (`.fb2`) | Metadata, nested sections, poems, notes as sections, embedded base64 images; XML-declared encodings including Windows-1251 |
+| FB2.ZIP / FBZ (`.fb2.zip`, `.fbz`) | One or multiple FB2 books; choose an entry when an archive contains several books |
+| Plain text (`.txt`) | UTF-8, UTF-16 BOM and configurable Windows-1251; long files split into navigable parts |
+| Comic Book ZIP (`.cbz`) | Raster pages in natural filename order (`page2` before `page10`); open the current page with `i` |
 
-**VSCodeReader: Resume Reading** возвращает скрытый текст или заново открывает последнюю книгу после закрытия терминала/перезапуска VS Code. **VSCodeReader: Hide Text** скрывает текущую сессию через палитру команд. После Escape ввод не возвращает текст; используйте Resume Reading.
+Ordinary `.zip` files are not treated as books. HTML/Markdown, PDF and MOBI/AZW3 are not supported yet. EPUB fixed layout, DRM, multimedia and inline footnote navigation remain outside this version.
 
-Позиция сохраняется локально при навигации, скрытии и закрытии. Изменение ширины панели переносит текст заново; продолжение остаётся около того же фрагмента. Изменение исходного файла сбрасывает позицию; данные книги не отправляются в сеть.
+## Get started
 
-## Оформление
+1. Install dependencies with `npm ci` (Node.js 22).
+2. Open the repository in VS Code and press F5 (`Run VSCodeReader`).
+3. In the new window, run **VSCodeReader: Open Book** and select a supported file. An [Alice EPUB sample](samples/README.md) is included for testing.
 
-- Шрифт, размер и цвета: обычные настройки терминала VS Code.
-- `vscodeReader.terminalName`: имя вкладки, по умолчанию `output`.
-- `vscodeReader.linePrefix`: необязательный префикс строк, например `[text] `; по умолчанию пустой.
+Alternatively, run `npm run package`, choose **Extensions: Install from VSIX…**, and install `vscode-reader-0.0.2.vsix`. Requires VS Code 1.95.0 or later.
 
-Настройки расширения применяются к новым сессиям. Иллюстрации заменяются на `[image: …]`, обложка пропускается при первом открытии, если в ней нет текста. Название книги и прогресс не выводятся постоянно.
+Supported files also have an **Open Book** action in the Explorer context menu. Opening the same book again reuses its reading session. Entries in a multi-book FB2 archive have separate sessions and reading positions.
 
-## Разработка и проверки
+## Keyboard controls
+
+With focus in the reader terminal:
+
+| Keys | Action |
+| --- | --- |
+| `j` / `k`, ↓ / ↑ | Next / previous line |
+| Space / PageDown, PageUp | Next / previous screen |
+| `n` / `p` | Next / previous chapter or comic page |
+| `g` | Table of contents |
+| `/` | Search the book, up to 200 matches |
+| `b` | Bookmark the current position |
+| `B` | Go to a bookmark |
+| `i` | Open the current illustration, or choose one if there are several |
+| `?` | Keyboard help |
+| Escape | Clear the text and show `ready` |
+
+**VSCodeReader: Resume Reading** restores hidden text or reopens the last book after closing the terminal or restarting VS Code. **VSCodeReader: Hide Text** hides the active reading session from the Command Palette. After Escape, use Resume Reading to bring the text back.
+
+Positions and bookmarks are saved locally. Resizing the terminal reflows text around the same passage. Changing the source file starts a new reading position. Book contents are not sent over the network.
+
+## Images and comics
+
+The terminal shows text markers instead of inline images. Press `i` to open an illustration in a separate editor tab. When the current chapter has one image, it opens directly; otherwise a picker lists the book's images with current-chapter images first. **VSCodeReader: Open Image** lists all available images, including covers. The terminal keeps keyboard focus so you can continue navigating.
+
+EPUB archive images and FB2 base64 images are extracted only when requested. PNG, JPEG, GIF, WebP and BMP are supported. SVG and remote images are not opened. Images are limited to 10 MiB, 40 megapixels and 16,384 pixels per side. A bounded local preview cache holds at most 128 files / 100 MiB; old previews may need to be reopened from the book after eviction.
+
+For CBZ, use `n` / `p` to select a page and `i` to open it. Pages stay in separate image tabs; page changes do not automatically open images. If the book changes on disk, close its reading terminal and reopen it before viewing more images.
+
+## Settings
+
+- Font, font size and colors: use normal VS Code terminal settings.
+- `vscodeReader.terminalName`: tab name; defaults to `output`.
+- `vscodeReader.linePrefix`: optional prefix such as `[text] `; empty by default.
+- `vscodeReader.textEncoding`: `utf-8` (default) or `windows-1251` for TXT files without a BOM. BOM takes precedence; FB2 follows its XML encoding declaration.
+
+Reader settings apply to new sessions. Close and reopen a book to change its TXT encoding. Book titles, covers and progress indicators are not constantly displayed in the terminal.
+
+## Development and checks
 
 ```sh
-npm run check        # typecheck, unit-тесты, сборка extension и parser worker
-npm run test:host    # интеграционные проверки в настоящем VS Code 1.95.3
-npm run package      # установочный VSIX без samples, тестов и node_modules
+npm run check        # typecheck, unit tests, extension and parser worker build
+npm run test:host    # integration checks in VS Code 1.95.3
+npm run package      # VSIX without samples, tests or node_modules
 ```
 
-`test:host` при первом запуске скачивает VS Code; на Linux нужны библиотеки Electron и дисплей (в CI используется `xvfb-run`). Переменная `VSCODE_TEST_VERSION` позволяет проверить другую версию VS Code.
+The host test downloads VS Code on its first run. Linux needs Electron libraries and a display (`xvfb-run` in CI). Set `VSCODE_TEST_VERSION` to test another VS Code version. Tests use synthetic books and the included EPUB; they do not download books.
 
-Парсер работает в worker, открытие можно отменить. Ограничения: архив 100 МиБ, объявленный распакованный объём 300 МиБ, 10 000 записей, один XML/XHTML 10 МиБ, прочитанный текст до 32 МиБ. Большие/повреждённые книги показывают ошибку вместо неограниченной распаковки. Для CI используются собственные синтетические книги и сохранённый пример EPUB; тесты не скачивают книги из сети.
+Parsing and image extraction run in cancellable workers. Limits: 100 MiB input, 300 MiB declared archive contents, 10,000 archive entries, 10 MiB per extracted resource, and 32 MiB of extracted text. Uncompressed FB2/TXT documents are limited to 32 MiB; a compressed FB2 entry is limited to 10 MiB.
 
-Полноценная поддержка сносок, FB2, ленивое чтение глав и расширенная доступность остаются в плане. Скрипты книги, изображения и авторский CSS в терминале не исполняются. Лицензия проекта пока не выбрана; уведомления библиотек включены в bundle.
+Book scripts and terminal control sequences are not executed. Rich HTML layout, lazy chapter loading, interactive footnotes and expanded accessibility are still planned. The project's own license has not been selected (`UNLICENSED`); dependency notices are included in the VSIX.

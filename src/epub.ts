@@ -1,12 +1,8 @@
+import { decodeXml as decode } from './encoding';
+import { isRasterMediaType } from './images';
 import { Archive, resolveHref } from './archive';
 import { chapterText, content, elements, xml, localName } from './xml';
-import { safeText, type Book, type Chapter, type TocItem } from './book';
-
-function decode(bytes: Uint8Array): string {
-  const head = Buffer.from(bytes.subarray(0, 200)).toString('ascii');
-  const encoding = /encoding\s*=\s*["']([^"']+)["']/i.exec(head)?.[1] ?? 'utf-8';
-  return new TextDecoder(encoding, { fatal: true }).decode(bytes);
-}
+import { safeText, type Book, type BookImage, type Chapter, type TocItem } from './book';
 
 export async function readEpub(bytes: Uint8Array, signal?: AbortSignal): Promise<Book> {
   const archive = await Archive.open(bytes, signal);
@@ -24,6 +20,14 @@ export async function readEpub(bytes: Uint8Array, signal?: AbortSignal): Promise
     const spine = elements(doc, 'spine')[0];
     if (!spine) throw new Error('EPUB has no reading order.');
     const chapters: Chapter[] = [];
+    const images: BookImage[] = [];
+    for (const item of manifest.values()) {
+      if (!isRasterMediaType(item.attribs['media-type']) || !item.attribs.href) continue;
+      try {
+        const path = resolveHref(packagePath, item.attribs.href).path;
+        if (archive.has(path) && !images.some(image => image.id === path)) images.push({ id: path, label: safeText(path), mediaType: item.attribs['media-type'], chapters: [] });
+      } catch { /* Remote images are never fetched. */ }
+    }
     for (const itemref of elements(spine, 'itemref')) {
       signal?.throwIfAborted();
       if (itemref.attribs.linear === 'no') continue;
@@ -33,9 +37,16 @@ export async function readEpub(bytes: Uint8Array, signal?: AbortSignal): Promise
       const path = resolveHref(packagePath, item.attribs.href).path;
       const source = decode(await archive.read(path));
       const heading = chapterText(source);
+      for (const ref of heading.images) {
+        try {
+          const target = resolveHref(path, ref.href).path;
+          const image = images.find(i => i.id === target);
+          if (image) { if (!image.chapters.includes(chapters.length)) image.chapters.push(chapters.length); if (ref.label !== 'illustration') image.label = ref.label; }
+        } catch { /* External image references stay inert. */ }
+      }
       const titleDoc = xml(source);
       const title = content(elements(titleDoc, 'h1')[0] ?? elements(titleDoc, 'h2')[0] ?? elements(titleDoc, 'title')[0] ?? titleDoc);
-      chapters.push({ id: path, title: title.slice(0, 200) || `Section ${chapters.length + 1}`, ...heading });
+      chapters.push({ id: path, title: title.slice(0, 200) || `Section ${chapters.length + 1}`, text: heading.text, anchors: heading.anchors });
     }
     if (!chapters.length) throw new Error('EPUB has no readable chapters.');
     const toc: TocItem[] = [];
@@ -73,6 +84,6 @@ export async function readEpub(bytes: Uint8Array, signal?: AbortSignal): Promise
       }
     }
     if (!toc.length) chapters.forEach((c, chapter) => toc.push({ chapter, title: c.title, offset: 0, depth: 0 }));
-    return { title: content(elements(doc, 'title')[0] ?? doc).slice(0, 200), author: elements(doc, 'creator').map(content).join(', '), chapters, toc };
+    return { title: content(elements(doc, 'title')[0] ?? doc).slice(0, 200), author: elements(doc, 'creator').map(content).join(', '), chapters, toc, images };
   } finally { archive.close(); }
 }

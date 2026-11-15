@@ -1,8 +1,8 @@
 {
   "name": "vscode-reader",
   "displayName": "VSCodeReader",
-  "description": "Read EPUB books in a quiet terminal tab.",
-  "version": "0.0.1",
+  "description": "Read EPUB, FB2, TXT and CBZ in a quiet terminal tab, with illustrations in editor tabs.",
+  "version": "0.0.2",
   "publisher": "alexChurkin",
   "private": true,
   "license": "UNLICENSED",
@@ -42,13 +42,17 @@
       {
         "command": "vscodeReader.hide",
         "title": "VSCodeReader: Hide Text"
+      },
+      {
+        "command": "vscodeReader.openImage",
+        "title": "VSCodeReader: Open Image"
       }
     ],
     "menus": {
       "explorer/context": [
         {
           "command": "vscodeReader.openBook",
-          "when": "resourceExtname == .epub",
+          "when": "resourceFilename =~ /\\.(epub|fb2|fb2\\.zip|fbz|txt|cbz)$/i",
           "group": "navigation@90"
         }
       ]
@@ -66,6 +70,15 @@
           "default": "",
           "maxLength": 12,
           "description": "Optional console-style prefix, for example [text] ."
+        },
+        "vscodeReader.textEncoding": {
+          "type": "string",
+          "enum": [
+            "utf-8",
+            "windows-1251"
+          ],
+          "default": "utf-8",
+          "description": "Encoding for TXT documents without a BOM. Applies to new reading sessions."
         }
       }
     }
