@@ -2,7 +2,7 @@
 
 **English** · [Русский](README.ru.md)
 
-Read books in VS Code in a tab that looks like console output. VSCodeReader uses a real **Terminal** tab named `output`, your terminal font and colors, and keyboard navigation. Illustrations open on demand in separate editor tabs.
+Read books in VS Code in a tab that looks like console output. VSCodeReader uses a real **Terminal** tab named after the book, your terminal font and colors, and keyboard navigation. Illustrations open on demand in separate editor tabs.
 
 The current **0.1.0** build supports EPUB, FictionBook, plain text, CBZ comics, HTML and Markdown. [Implementation plan (Russian)](docs/IMPLEMENTATION_PLAN.md) · [Architecture decisions (Russian)](docs/ADR-001-terminal-reader.md).
 
@@ -30,11 +30,13 @@ The version stays at **0.1.0**; each package build replaces `vscode-reader-0.1.0
 
 To build the VSIX locally, use `npm ci` and `npm run package` (Node.js 22). For development, press F5 (`Run VSCodeReader`). Requires VS Code 1.95.0 or later. An [Alice EPUB sample](samples/README.md) is included for testing.
 
-The terminal is called `output` to keep its console appearance. The sidebar shows the actual book title. Change `vscodeReader.terminalName` if you prefer another terminal name.
+The terminal tab shows the book title, and the Library sidebar lists each open book. Use `vscodeReader.terminalName` to customize the title with `{title}` and `{filename}`.
 
 Supported files also have an **Open Book** action in the Explorer context menu. Opening the same book again reuses its reading session. Entries in a multi-book FB2 archive have separate sessions and reading positions.
 
 ## Keyboard controls
+
+A dim hint bar stays at the bottom of the terminal. It adapts to the available width and shows the relevant keys while reading, searching, choosing an item or naming a bookmark. Bookmark confirmations appear there too. Press `?` for the full key list.
 
 With focus in the reader terminal:
 
@@ -51,9 +53,11 @@ With focus in the reader terminal:
 | `l` | Jump to a location number or percentage |
 | `i` | Open the current illustration, or choose one if there are several |
 | `?` | Keyboard help |
-| Escape | Clear the text and show `ready` |
+| Escape | Hide the text and show resume instructions |
+| `r` (while hidden) | Resume reading |
+| `q` | Close the reader terminal and save its position |
 
-**VSCodeReader: Resume Reading** restores hidden text or reopens the last book after closing the terminal or restarting VS Code. **VSCodeReader: Hide Text** hides the active reading session from the Command Palette. After Escape, use Resume Reading to bring the text back.
+**VSCodeReader: Resume Reading** restores hidden text or reopens the last book after closing the terminal or restarting VS Code. **VSCodeReader: Hide Text** hides the active reading session from the Command Palette. After Escape, press `r` or use Resume Reading to bring the text back.
 
 ## Progress and bookmarks
 
@@ -78,11 +82,11 @@ For CBZ, use `n` / `p` to select a page and `i` to open it. Pages stay in separa
 ## Settings
 
 - Font, font size and colors: use normal VS Code terminal settings.
-- `vscodeReader.terminalName`: tab name; defaults to `output`.
+- `vscodeReader.terminalName`: tab name template; defaults to `{title}`. `{filename}` is also supported. The literal `output` resolves to the book title.
 - `vscodeReader.linePrefix`: optional prefix such as `[text] `; empty by default.
 - `vscodeReader.textEncoding`: `utf-8` (default) or `windows-1251` for TXT, HTML and Markdown without a BOM or HTML charset declaration. BOM takes precedence; HTML also honors its meta charset and FB2 follows its XML encoding declaration.
 
-Reader settings apply to new sessions. Close and reopen a book to change its text encoding. Book titles, covers and progress indicators are not constantly displayed in the terminal.
+Reader settings apply to new sessions. Close and reopen a book to change its text encoding. The reading area shows the text and a compact hint bar; book details and progress are in Library.
 
 ## Development and checks
 

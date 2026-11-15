@@ -3,7 +3,7 @@ import { createHash } from 'node:crypto';
 import type { ImageData } from './images';
 
 let writes = Promise.resolve();
-export async function previewImage(storage: vscode.Uri, image: ImageData): Promise<void> {
+export async function previewImage(storage: vscode.Uri, image: ImageData, canOpen: () => boolean = () => true): Promise<void> {
   if (!/^(png|jpg|gif|webp|bmp)$/.test(image.extension)) throw new Error('Unsupported image type.');
   const directory = vscode.Uri.joinPath(storage, 'image-cache');
   const name = createHash('sha256').update(image.bytes).digest('hex') + '.' + image.extension;
@@ -27,5 +27,6 @@ export async function previewImage(storage: vscode.Uri, image: ImageData): Promi
   });
   writes = write;
   await write;
+  if (!canOpen()) return;
   await vscode.commands.executeCommand('vscode.open', target, { viewColumn: vscode.ViewColumn.Beside, preview: false, preserveFocus: true });
 }

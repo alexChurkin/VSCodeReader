@@ -155,8 +155,8 @@
       "properties": {
         "vscodeReader.terminalName": {
           "type": "string",
-          "default": "output",
-          "description": "Neutral name for the reader terminal."
+          "default": "{title}",
+          "description": "Terminal tab name. Use {title} for the book title and {filename} for the file name. The old output default is replaced with the book title."
         },
         "vscodeReader.linePrefix": {
           "type": "string",

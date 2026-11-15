@@ -2,6 +2,7 @@ import * as vscode from 'vscode';
 import { Worker } from 'node:worker_threads';
 import { createHash } from 'node:crypto';
 import { LIMITS } from './archive';
+import { terminalName } from './footer';
 import { ReaderStorage } from './storage';
 import { ReaderLibrary, LibraryItem, type RecentBook, type LibraryTarget, type LibraryBook } from './library';
 import type { ReadingProgress } from './progress';
@@ -56,20 +57,21 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     });
   };
   const workerPath = vscode.Uri.joinPath(context.extensionUri, 'dist', 'worker.cjs').fsPath;
-  const task = <T>(title: string, callback: (token: vscode.CancellationToken) => Promise<T>) => vscode.window.withProgress({ location: vscode.ProgressLocation.Notification, title, cancellable: true }, async (_, token) => {
+  const task = <T>(title: string, callback: (token: vscode.CancellationToken) => Promise<T>, closeEvent?: vscode.Event<void | number>) => vscode.window.withProgress({ location: vscode.ProgressLocation.Notification, title, cancellable: true }, async (_, token) => {
     const source = new vscode.CancellationTokenSource();
     loading.add(source);
     const linked = token.onCancellationRequested(() => source.cancel());
+    const closing = closeEvent?.(() => source.cancel());
     if (token.isCancellationRequested || stopping) source.cancel();
     try { return await callback(source.token); }
-    finally { linked.dispose(); source.dispose(); loading.delete(source); }
+    finally { closing?.dispose(); linked.dispose(); source.dispose(); loading.delete(source); }
   });
   const readBytes = async (uri: vscode.Uri) => {
     const stat = await vscode.workspace.fs.stat(uri);
     if (stat.size > LIMITS.archive) throw new Error('Book exceeds the 100 MiB file limit.');
     return vscode.workspace.fs.readFile(uri);
   };
-  const activeSession = () => [...sessions.values()].find(s => s.terminal === vscode.window.activeTerminal) ?? latest;
+  const activeSession = () => [...sessions.values()].find(s => !s.reader.isClosed && s.terminal === vscode.window.activeTerminal) ?? (latest && !latest.reader.isClosed ? latest : [...sessions.values()].filter(s => !s.reader.isClosed).at(-1));
   const recentValue = await storage.get<RecentBook[]>('recentBooks');
   let recent: RecentBook[] = Array.isArray(recentValue) ? recentValue.filter(item => item && typeof item.uri === 'string').slice(0, 10) : [];
   const asLibraryBook = (session: Session): LibraryBook => {
@@ -106,6 +108,12 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     latest = session; session.reader.resume(); session.terminal.show();
     remember(session.source, session.reader.snapshot.progress, true);
   };
+  const removeSession = (session: Session) => {
+    if (sessions.get(session.id) !== session) return;
+    sessions.delete(session.id);
+    if (latest === session) latest = [...sessions.values()].at(-1);
+    refresh();
+  };
   context.subscriptions.push(library, vscode.window.createTreeView('vscodeReader.library', { treeDataProvider: library, showCollapseAll: true }));
   refresh();
   const open = async (resource?: vscode.Uri, saved?: LastBook) => {
@@ -113,7 +121,9 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     if (!resource || stopping) return;
     const uri = resource, id = uri.toString();
     const isZip = /\.(?:fb2\.zip|fbz)$/i.test(uri.path);
-    const existing = sessions.get(sessionId(uri, saved?.entry));
+    const cached = sessions.get(sessionId(uri, saved?.entry));
+    const existing = cached && !cached.reader.isClosed ? cached : undefined;
+    if (cached?.reader.isClosed) removeSession(cached);
     if (existing && (!isZip || saved?.entry)) { focusSession(existing); return; }
     if (opening.has(id)) return;
     opening.add(id);
@@ -155,14 +165,14 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
               if (imageToken.isCancellationRequested) throw new vscode.CancellationError();
               if (fingerprint(current) !== hash) throw new Error('Book changed on disk. Close this reading session and reopen the book.');
               const data = await runWorker<ImageData>({ ...options, bytes: current, action: 'image', imageId: image.id }, workerPath, imageToken);
-              if (!imageToken.isCancellationRequested && !stopping) await previewImage(context.globalStorageUri, data);
-            });
+              if (!imageToken.isCancellationRequested && !stopping && !reader.isClosed) await previewImage(context.globalStorageUri, data, () => !reader.isClosed && !imageToken.isCancellationRequested && !stopping);
+            }, reader.onDidClose);
           } catch (error) { if (!(error instanceof vscode.CancellationError)) throw error; }
         });
-        const name = safeText(config.get<string>('terminalName', 'output')).replace(/\n/g, '').slice(0, 80) || 'output';
-        const terminal = vscode.window.createTerminal({ name, pty: reader, location: vscode.TerminalLocation.Panel, iconPath: new vscode.ThemeIcon('terminal') });
+        const name = terminalName(config.get<string>('terminalName', '{title}'), book.title, uri.path.split('/').at(-1) || 'Reader');
+        const terminal = vscode.window.createTerminal({ name, pty: reader, location: vscode.TerminalLocation.Panel, iconPath: new vscode.ThemeIcon('book'), isTransient: true });
         const session: Session = { id: keyId, source, terminal, reader };
-        context.subscriptions.push(reader.onDidChange(refresh));
+        context.subscriptions.push(reader.onDidChange(refresh), reader.onDidClose(() => removeSession(session)));
         sessions.set(keyId, session); latest = session;
         remember(source, reader.snapshot.progress, true);
         terminal.show();
@@ -218,9 +228,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     }),
     vscode.window.onDidCloseTerminal(terminal => {
       for (const [id, session] of sessions) if (session.terminal === terminal) {
-        session.reader.close(); sessions.delete(id);
-        if (latest === session) latest = [...sessions.values()].at(-1);
-        refresh();
+        session.reader.close(); removeSession(session);
       }
     })
   );
