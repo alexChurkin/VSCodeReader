@@ -43,17 +43,26 @@ export function chapterText(source: string) {
   const body = elements(doc, 'body')[0] ?? doc;
   return renderNodes(body.children);
 }
-export function renderNodes(nodes: AnyNode[], fb2 = false): { text: string; anchors: Record<string, number>; images: ImageReference[] } {
+export interface HeadingReference { title: string; level: number; offset: number }
+export function renderNodes(nodes: AnyNode[], fb2 = false, markup = false): { text: string; anchors: Record<string, number>; images: ImageReference[]; headings: HeadingReference[] } {
   const ignored = new Set(['script', 'style', 'head', 'iframe', 'object', 'embed', 'form', 'svg', 'audio', 'video']);
   const blocks = new Set([...(fb2 ? ['title', 'subtitle', 'epigraph', 'annotation', 'poem', 'stanza', 'v', 'cite', 'text-author'] : []), 'p', 'div', 'section', 'article', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'li', 'blockquote', 'pre', 'tr', 'dt', 'dd']);
   let output = '';
   const anchors: Record<string, number> = Object.create(null);
   const images: ImageReference[] = [];
+  const headings: HeadingReference[] = [];
+  const listCounters = new Map<AnyNode, number>();
   const boundary = () => { if (output && !output.endsWith('\n')) output += '\n\n'; };
-  const stack: Array<{ node: AnyNode; end?: boolean }> = [...nodes].reverse().map(node => ({ node }));
+  const stack: Array<{ node: AnyNode; end?: boolean; pre?: boolean }> = [...nodes].reverse().map(node => ({ node }));
   while (stack.length) {
-    const { node, end } = stack.pop()!;
-    if (node.type === 'text') { output += safeText(node.data).replace(/\s+/g, ' '); continue; }
+    const { node, end, pre } = stack.pop()!;
+    if (node.type === 'text') {
+      const text = safeText(node.data);
+      if (markup && !pre && !text.trim() && (!output || output.endsWith('\n'))) continue;
+      const normalized = text.replace(/\s+/g, ' ');
+      output += markup && pre ? text : markup && /[ \n]$/.test(output) ? normalized.replace(/^ /, '') : normalized;
+      continue;
+    }
     if (!isElement(node)) continue;
     const tag = localName(node.name);
     if (tag === 'svg') {
@@ -62,9 +71,22 @@ export function renderNodes(nodes: AnyNode[], fb2 = false): { text: string; anch
         if (href) images.push({ href, label: 'illustration', offset: output.length });
       }
     }
-    if (ignored.has(tag) || node.attribs.hidden !== undefined || node.attribs['aria-hidden'] === 'true') continue;
-    if (end) { if (blocks.has(tag)) boundary(); continue; }
-    if (blocks.has(tag)) boundary();
+    if ((markup && ['template', 'noscript', 'button', 'select', 'textarea', 'input'].includes(tag)) || ignored.has(tag) || node.attribs.hidden !== undefined || node.attribs['aria-hidden'] === 'true') continue;
+    if (end) {
+      if (markup && (tag === 'td' || tag === 'th')) output += ' | ';
+      if (blocks.has(tag)) boundary(); continue;
+    }
+    if (blocks.has(tag) && !(markup && tag === 'p' && /(?:- |\d+\. |\[[ x]\] )$/.test(output))) boundary();
+    if (markup && /^h[1-6]$/.test(tag)) headings.push({ title: content(node) || 'Section', level: Number(tag[1]), offset: output.length });
+    if (markup && tag === 'li') {
+      const parent = node.parent;
+      const ordered = parent && isElement(parent) && localName(parent.name) === 'ol';
+      const count = parent ? listCounters.get(parent) ?? (ordered ? Math.max(1, Math.min(1_000_000, Number(parent.attribs.start) || 1)) : 1) : 1;
+      if (parent) listCounters.set(parent, count + 1);
+      const checkbox = node.children.find(child => isElement(child) && localName(child.name) === 'input' && child.attribs.type === 'checkbox');
+      output += checkbox && isElement(checkbox) ? (checkbox.attribs.checked !== undefined ? '[x] ' : '[ ] ') : ordered ? `${count}. ` : '- ';
+    }
+    if (markup && tag === 'hr') { boundary(); output += '---\n\n'; }
     if (node.attribs.id) anchors[node.attribs.id] = output.length;
     if (tag === 'br' || (fb2 && tag === 'empty-line')) output += '\n';
     else if (tag === 'img' || tag === 'image') {
@@ -74,10 +96,10 @@ export function renderNodes(nodes: AnyNode[], fb2 = false): { text: string; anch
       output += `[image: ${label}]`;
     }
     else {
-      stack.push({ node, end: true });
-      for (let i = node.children.length - 1; i >= 0; i--) stack.push({ node: node.children[i] });
+      stack.push({ node, end: true, pre });
+      for (let i = node.children.length - 1; i >= 0; i--) stack.push({ node: node.children[i], pre: markup && (pre || tag === 'pre' || tag === 'code') });
     }
   }
   // Keep anchor offsets valid: no global trim/collapse after collecting them.
-  return { text: output || '[empty chapter]', anchors, images };
+  return { text: output || '[empty chapter]', anchors, images, headings };
 }

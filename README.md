@@ -4,7 +4,7 @@
 
 Read books in VS Code in a tab that looks like console output. VSCodeReader uses a real **Terminal** tab named `output`, your terminal font and colors, and keyboard navigation. Illustrations open on demand in separate editor tabs.
 
-Version **0.0.2** supports EPUB, FictionBook, plain text and CBZ comics. [Implementation plan (Russian)](docs/IMPLEMENTATION_PLAN.md) · [Architecture decisions (Russian)](docs/ADR-001-terminal-reader.md).
+Version **0.0.3** supports EPUB, FictionBook, plain text, CBZ comics, HTML and Markdown. [Implementation plan (Russian)](docs/IMPLEMENTATION_PLAN.md) · [Architecture decisions (Russian)](docs/ADR-001-terminal-reader.md).
 
 ## Supported formats
 
@@ -14,9 +14,11 @@ Version **0.0.2** supports EPUB, FictionBook, plain text and CBZ comics. [Implem
 | FictionBook 2 (`.fb2`) | Metadata, nested sections, poems, notes as sections, embedded base64 images; XML-declared encodings including Windows-1251 |
 | FB2.ZIP / FBZ (`.fb2.zip`, `.fbz`) | One or multiple FB2 books; choose an entry when an archive contains several books |
 | Plain text (`.txt`) | UTF-8, UTF-16 BOM and configurable Windows-1251; long files split into navigable parts |
+| HTML (`.html`, `.htm`) | Headings as chapters, document title/author, text, lists, code blocks and local or base64 images |
+| Markdown (`.md`, `.markdown`) | ATX/Setext headings, GFM lists/tasks/tables, fenced code and images |
 | Comic Book ZIP (`.cbz`) | Raster pages in natural filename order (`page2` before `page10`); open the current page with `i` |
 
-Ordinary `.zip` files are not treated as books. HTML/Markdown, PDF and MOBI/AZW3 are not supported yet. EPUB fixed layout, DRM, multimedia and inline footnote navigation remain outside this version.
+Ordinary `.zip` files are not treated as books. PDF and MOBI/AZW3 are not supported. EPUB fixed layout, DRM, multimedia and inline footnote navigation remain outside this version.
 
 ## Get started
 
@@ -24,7 +26,7 @@ Ordinary `.zip` files are not treated as books. HTML/Markdown, PDF and MOBI/AZW3
 2. Open the repository in VS Code and press F5 (`Run VSCodeReader`).
 3. In the new window, run **VSCodeReader: Open Book** and select a supported file. An [Alice EPUB sample](samples/README.md) is included for testing.
 
-Alternatively, run `npm run package`, choose **Extensions: Install from VSIX…**, and install `vscode-reader-0.0.2.vsix`. Requires VS Code 1.95.0 or later.
+Alternatively, run `npm run package`, choose **Extensions: Install from VSIX…**, and install `vscode-reader-0.0.3.vsix`. Requires VS Code 1.95.0 or later.
 
 Supported files also have an **Open Book** action in the Explorer context menu. Opening the same book again reuses its reading session. Entries in a multi-book FB2 archive have separate sessions and reading positions.
 
@@ -53,7 +55,9 @@ Positions and bookmarks are saved locally. Resizing the terminal reflows text ar
 
 The terminal shows text markers instead of inline images. Press `i` to open an illustration in a separate editor tab. When the current chapter has one image, it opens directly; otherwise a picker lists the book's images with current-chapter images first. **VSCodeReader: Open Image** lists all available images, including covers. The terminal keeps keyboard focus so you can continue navigating.
 
-EPUB archive images and FB2 base64 images are extracted only when requested. PNG, JPEG, GIF, WebP and BMP are supported. SVG and remote images are not opened. Images are limited to 10 MiB, 40 megapixels and 16,384 pixels per side. A bounded local preview cache holds at most 128 files / 100 MiB; old previews may need to be reopened from the book after eviction.
+EPUB archive images, FB2 base64 images and HTML/Markdown illustrations are loaded only when requested. PNG, JPEG, GIF, WebP and BMP are supported. SVG and remote images are not opened. Images are limited to 10 MiB, 40 megapixels and 16,384 pixels per side. A bounded local preview cache holds at most 128 files / 100 MiB; old previews may need to be reopened from the book after eviction.
+
+For HTML/Markdown, image paths are resolved relative to the document folder. Images must stay inside that folder, including after resolving symlinks. Absolute paths, parent-directory escapes and remote URLs are not opened; HTML `<base>` and `srcset` are not used. Raster `data:image/...;base64,...` images are also supported. Original HTML/Markdown files still open in the normal VS Code editor; use Open Book for reading mode.
 
 For CBZ, use `n` / `p` to select a page and `i` to open it. Pages stay in separate image tabs; page changes do not automatically open images. If the book changes on disk, close its reading terminal and reopen it before viewing more images.
 
@@ -62,9 +66,9 @@ For CBZ, use `n` / `p` to select a page and `i` to open it. Pages stay in separa
 - Font, font size and colors: use normal VS Code terminal settings.
 - `vscodeReader.terminalName`: tab name; defaults to `output`.
 - `vscodeReader.linePrefix`: optional prefix such as `[text] `; empty by default.
-- `vscodeReader.textEncoding`: `utf-8` (default) or `windows-1251` for TXT files without a BOM. BOM takes precedence; FB2 follows its XML encoding declaration.
+- `vscodeReader.textEncoding`: `utf-8` (default) or `windows-1251` for TXT, HTML and Markdown without a BOM or HTML charset declaration. BOM takes precedence; HTML also honors its meta charset and FB2 follows its XML encoding declaration.
 
-Reader settings apply to new sessions. Close and reopen a book to change its TXT encoding. Book titles, covers and progress indicators are not constantly displayed in the terminal.
+Reader settings apply to new sessions. Close and reopen a book to change its text encoding. Book titles, covers and progress indicators are not constantly displayed in the terminal.
 
 ## Development and checks
 
@@ -76,6 +80,6 @@ npm run package      # VSIX without samples, tests or node_modules
 
 The host test downloads VS Code on its first run. Linux needs Electron libraries and a display (`xvfb-run` in CI). Set `VSCODE_TEST_VERSION` to test another VS Code version. Tests use synthetic books and the included EPUB; they do not download books.
 
-Parsing and image extraction run in cancellable workers. Limits: 100 MiB input, 300 MiB declared archive contents, 10,000 archive entries, 10 MiB per extracted resource, and 32 MiB of extracted text. Uncompressed FB2/TXT documents are limited to 32 MiB; a compressed FB2 entry is limited to 10 MiB.
+Parsing and image extraction run in cancellable workers. Limits: 100 MiB input, 300 MiB declared archive contents, 10,000 archive entries, 10 MiB per extracted resource, and 32 MiB of extracted text. Uncompressed FB2/TXT/HTML/Markdown documents are limited to 32 MiB; a compressed FB2 entry is limited to 10 MiB.
 
-Book scripts and terminal control sequences are not executed. Rich HTML layout, lazy chapter loading, interactive footnotes and expanded accessibility are still planned. The project's own license has not been selected (`UNLICENSED`); dependency notices are included in the VSIX.
+Book scripts and terminal control sequences are not executed. HTML is converted to text; CSS, forms and dynamic page content are not rendered. Markdown links retain their labels, without interactive navigation. Rich HTML layout, lazy chapter loading, interactive footnotes and expanded accessibility are still planned. The project's own license has not been selected (`UNLICENSED`); dependency notices are included in the VSIX.

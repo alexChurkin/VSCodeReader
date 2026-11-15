@@ -5,7 +5,7 @@ export function decodeText(bytes: Uint8Array, fallback: string = 'utf-8'): strin
   else if (bytes[0] === 0xfe && bytes[1] === 0xff) encoding = 'utf-16be';
   else if (bytes[0] === 0xef && bytes[1] === 0xbb && bytes[2] === 0xbf) encoding = 'utf-8';
   try { return new TextDecoder(encoding, { fatal: true }).decode(bytes); }
-  catch { throw new Error(`Cannot decode document as ${encoding}. For TXT, select UTF-8 or Windows-1251 in vscodeReader.textEncoding.`); }
+  catch { throw new Error(`Cannot decode document as ${encoding}. For text documents without an encoding declaration, select UTF-8 or Windows-1251 in vscodeReader.textEncoding.`); }
 }
 export function decodeXml(bytes: Uint8Array): string {
   if (bytes[0] === 0 || bytes[1] === 0 || bytes[0] === 0xff || bytes[0] === 0xfe) {

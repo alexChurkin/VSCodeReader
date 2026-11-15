@@ -1,3 +1,5 @@
+import { isMarkup, readMarkup, embeddedImage } from './markup';
+import { readLocalImage } from './local-images';
 import { posix } from 'node:path';
 import { Archive, LIMITS, archivePath } from './archive';
 import { type Book, safeText } from './book';
@@ -6,10 +8,10 @@ import { readEpub } from './epub';
 import { readFb2, fb2Image } from './fb2';
 import { validateImage, type ImageData } from './images';
 
-export interface ReadOptions { filename: string; entry?: string; encoding?: TextEncoding }
+export interface ReadOptions { filename: string; entry?: string; encoding?: TextEncoding; documentPath?: string }
 export interface WorkerRequest extends ReadOptions { bytes: Uint8Array; action?: 'book' | 'image'; imageId?: string }
 export type BookResult = { kind: 'book'; book: Book; entry?: string } | { kind: 'selection'; entries: string[] };
-export const supportedBook = (path: string) => /\.(?:epub|fb2|fb2\.zip|fbz|txt|cbz)$/i.test(path);
+export const supportedBook = (path: string) => /\.(?:epub|fb2|fb2\.zip|fbz|txt|cbz|html?|md|markdown)$/i.test(path);
 
 export function readTxt(bytes: Uint8Array, filename: string, encoding: TextEncoding = 'utf-8'): Book {
   if (bytes.length > LIMITS.text) throw new Error('TXT exceeds the 32 MiB document limit.');
@@ -61,10 +63,18 @@ export async function readBook(bytes: Uint8Array, options: ReadOptions): Promise
     return { kind: 'book', book: readFb2(result.bytes), entry: result.entry };
   }
   if (name.endsWith('.fb2')) return { kind: 'book', book: readFb2(bytes) };
+  if (isMarkup(name)) return { kind: 'book', book: readMarkup(bytes, options.filename, options.encoding).book };
   if (name.endsWith('.txt')) return { kind: 'book', book: readTxt(bytes, options.filename, options.encoding) };
-  throw new Error('Unsupported format. Choose EPUB, FB2, FB2.ZIP, FBZ, TXT or CBZ.');
+  throw new Error('Unsupported format. Choose EPUB, FB2, FB2.ZIP, FBZ, TXT, CBZ, HTML or Markdown.');
 }
 export async function extractImage(bytes: Uint8Array, options: ReadOptions, imageId: string): Promise<ImageData> {
+  if (isMarkup(options.filename)) {
+    const href = readMarkup(bytes, options.filename, options.encoding).resources.get(imageId);
+    if (!href) throw new Error('Image is not part of this document.');
+    if (/^data:/i.test(href)) return embeddedImage(href);
+    if (!options.documentPath) throw new Error('Local images require a document opened from the file system.');
+    return readLocalImage(options.documentPath, href);
+  }
   let image: Uint8Array;
   if (/\.(?:epub|cbz)$/i.test(options.filename)) {
     const archive = await Archive.open(bytes);

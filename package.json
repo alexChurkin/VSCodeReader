@@ -1,8 +1,8 @@
 {
   "name": "vscode-reader",
   "displayName": "VSCodeReader",
-  "description": "Read EPUB, FB2, TXT and CBZ in a quiet terminal tab, with illustrations in editor tabs.",
-  "version": "0.0.2",
+  "description": "Read EPUB, FB2, TXT, CBZ, HTML and Markdown in a quiet terminal tab, with illustrations in editor tabs.",
+  "version": "0.0.3",
   "publisher": "alexChurkin",
   "private": true,
   "license": "UNLICENSED",
@@ -52,7 +52,7 @@
       "explorer/context": [
         {
           "command": "vscodeReader.openBook",
-          "when": "resourceFilename =~ /\\.(epub|fb2|fb2\\.zip|fbz|txt|cbz)$/i",
+          "when": "resourceFilename =~ /\\.(epub|fb2|fb2\\.zip|fbz|txt|cbz|html?|md|markdown)$/i",
           "group": "navigation@90"
         }
       ]
@@ -78,7 +78,7 @@
             "windows-1251"
           ],
           "default": "utf-8",
-          "description": "Encoding for TXT documents without a BOM. Applies to new reading sessions."
+          "description": "Encoding for TXT, HTML and Markdown documents without a BOM or HTML charset declaration. Applies to new reading sessions."
         }
       }
     }
@@ -97,6 +97,7 @@
     "domhandler": "6.0.1",
     "fast-xml-parser": "5.12.1",
     "htmlparser2": "12.0.0",
+    "marked": "18.2.0",
     "string-width": "9.0.0",
     "yauzl": "3.4.0"
   },

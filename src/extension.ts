@@ -5,6 +5,7 @@ import { LIMITS } from './archive';
 import { type ReadingState, restoreState, safeText } from './book';
 import { supportedBook, type WorkerRequest, type BookResult, type ReadOptions } from './formats';
 import type { ImageData } from './images';
+import { isMarkup } from './markup';
 import type { TextEncoding } from './encoding';
 import { previewImage } from './image-preview';
 import { ReaderTerminal } from './terminal';
@@ -66,7 +67,7 @@ export function activate(context: vscode.ExtensionContext): void {
   };
   const activeSession = () => [...sessions.values()].find(s => s.terminal === vscode.window.activeTerminal) ?? latest;
   const open = async (resource?: vscode.Uri, saved?: LastBook) => {
-    if (!(resource instanceof vscode.Uri)) resource = (await vscode.window.showOpenDialog({ canSelectMany: false, filters: { Books: ['epub', 'fb2', 'zip', 'fbz', 'txt', 'cbz'] }, title: 'Open book in terminal' }))?.[0];
+    if (!(resource instanceof vscode.Uri)) resource = (await vscode.window.showOpenDialog({ canSelectMany: false, filters: { Books: ['epub', 'fb2', 'zip', 'fbz', 'txt', 'cbz', 'html', 'htm', 'md', 'markdown'] }, title: 'Open book in terminal' }))?.[0];
     if (!resource || stopping) return;
     const uri = resource, id = uri.toString();
     const isZip = /\.(?:fb2\.zip|fbz)$/i.test(uri.path);
@@ -75,13 +76,13 @@ export function activate(context: vscode.ExtensionContext): void {
     if (opening.has(id)) return;
     opening.add(id);
     try {
-      if (!supportedBook(uri.path)) throw new Error('Choose EPUB, FB2, FB2.ZIP, FBZ, TXT or CBZ. Ordinary ZIP archives are not opened as books.');
+      if (!supportedBook(uri.path)) throw new Error('Choose EPUB, FB2, FB2.ZIP, FBZ, TXT, CBZ, HTML or Markdown. Ordinary ZIP archives are not opened as books.');
       await task('Opening document', async token => {
         const bytes = await readBytes(uri);
         if (token.isCancellationRequested) throw new vscode.CancellationError();
         const hash = fingerprint(bytes);
         const config = vscode.workspace.getConfiguration('vscodeReader');
-        const options: ReadOptions = { filename: uri.path, entry: saved?.entry, encoding: saved?.encoding ?? config.get<TextEncoding>('textEncoding', 'utf-8') };
+        const options: ReadOptions = { filename: uri.path, documentPath: uri.scheme === 'file' ? uri.fsPath : undefined, entry: saved?.entry, encoding: saved?.encoding ?? config.get<TextEncoding>('textEncoding', 'utf-8') };
         let result = await runWorker<BookResult>({ bytes, ...options }, workerPath, token);
         if (result.kind === 'selection') {
           const selected = await vscode.window.showQuickPick(result.entries.map(entry => ({ label: safeText(entry), entry })), { title: 'Choose a book from the archive' });
@@ -95,7 +96,7 @@ export function activate(context: vscode.ExtensionContext): void {
         const keyId = sessionId(uri, options.entry);
         const reused = sessions.get(keyId);
         if (reused) { latest = reused; reused.reader.resume(); reused.terminal.show(); return; }
-        const key = 'book.v1.' + createHash('sha256').update(keyId).update('\0').update(hash).update(/\.txt$/i.test(uri.path) ? options.encoding ?? 'utf-8' : '').digest('hex');
+        const key = 'book.v1.' + createHash('sha256').update(keyId).update('\0').update(hash).update(/\.txt$/i.test(uri.path) || isMarkup(uri.path) ? options.encoding ?? 'utf-8' : '').digest('hex');
         const book = result.book;
         const rawState = context.globalState.get<ReadingState>(key);
         const state = restoreState(rawState, book);

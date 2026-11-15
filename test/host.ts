@@ -62,11 +62,18 @@ export async function run(): Promise<void> {
   await until(() => !vscode.window.terminals.includes(reopened));
   const directory = vscode.Uri.joinPath(extension.extensionUri, '.vscode-test', 'reader-fixtures');
   await vscode.workspace.fs.createDirectory(directory);
+  const assets = vscode.Uri.joinPath(directory, 'assets');
+  await vscode.workspace.fs.createDirectory(assets);
+  await vscode.workspace.fs.writeFile(vscode.Uri.joinPath(assets, 'local.png'), png);
   const fixtures: Array<[string, Uint8Array, boolean]> = [
     ['sample.fb2', Buffer.from(fb2), true],
     ['sample.fb2.zip', zip([['nested/book.fb2', fb2]]), true],
     ['sample.fbz', zip([['book.fb2', fb2]]), false],
     ['sample.txt', Buffer.from('Text file\n\nПривет'), false],
+    ['sample.html', Buffer.from('<title>HTML</title><h1>Start</h1><p>HTML text</p><h2>Picture</h2><img src="assets/local.png">'), true],
+    ['sample.htm', Buffer.from('<h1>HTM</h1><pre>  indented\ncode</pre>'), false],
+    ['sample.md', Buffer.from('# Markdown\n\n**Text**\n\n## Picture\n\n![Local](assets/local.png)'), true],
+    ['sample.markdown', Buffer.from('# Full extension\n\nMarkdown text'), false],
     ['comic.cbz', zip([['page10.png', png], ['page2.png', png]]), true]
   ];
   for (const [name, bytes, hasImage] of fixtures) {
@@ -91,5 +98,5 @@ export async function run(): Promise<void> {
     session.dispose();
     await until(() => !vscode.window.terminals.includes(session));
   }
-  console.log('VS Code host checks passed: EPUB, FB2, FB2.ZIP, FBZ, TXT, CBZ, native image tabs, navigation, hide, resize, bookmarks and reopen.');
+  console.log('VS Code host checks passed: EPUB, FB2, FB2.ZIP, FBZ, TXT, CBZ, HTML, HTM, Markdown, native image tabs, navigation, hide, resize, bookmarks and reopen.');
 }
