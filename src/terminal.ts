@@ -1,9 +1,12 @@
 import * as vscode from 'vscode';
-import { type Book, type ReadingState, type BookImage, safeText } from './book';
+import { type Book, type ReadingState, type BookImage, type Bookmark, type Locator, safeText } from './book';
+import { parseLocation, readingProgress, progressLabel } from './progress';
 import { Screen, findMatches } from './screen';
 
 const CLEAR = '\x1b[2J\x1b[3J\x1b[H';
 export class ReaderTerminal implements vscode.Pseudoterminal {
+  private readonly changes = new vscode.EventEmitter<void>();
+  readonly onDidChange = this.changes.event;
   private readonly writes = new vscode.EventEmitter<string>();
   readonly onDidWrite = this.writes.event;
   readonly screen: Screen;
@@ -28,30 +31,35 @@ export class ReaderTerminal implements vscode.Pseudoterminal {
     if (this.timer) clearTimeout(this.timer);
     this.save();
     this.writes.dispose();
+    this.changes.dispose();
   }
   setDimensions(dimensions: vscode.TerminalDimensions): void {
+    if (this.closed) return;
     this.screen.resize(dimensions.columns, dimensions.rows);
     this.draw();
+    this.save();
   }
   hide(): void {
+    if (this.closed) return;
     this.hidden = true;
     this.pending = '';
     this.save();
     this.writes.fire(CLEAR + 'ready');
   }
-  resume(): void { this.pending = ''; this.hidden = false; this.draw(); }
+  resume(): void { if (this.closed) return; this.pending = ''; this.hidden = false; this.draw(); this.changes.fire(); }
   private draw(): void {
     if (this.closed) return;
     this.writes.fire(this.hidden ? CLEAR + 'ready' : this.screen.render());
   }
   private save(): void {
     this.state = { ...this.state, ...this.screen.locator };
-    this.persist(this.state);
+    this.persist(structuredClone(this.state));
+    this.changes.fire();
   }
   private changed(): void {
     this.draw();
-    if (this.timer) clearTimeout(this.timer);
-    this.timer = setTimeout(() => this.save(), 200);
+    this.changes.fire();
+    if (!this.timer) this.timer = setTimeout(() => { this.timer = undefined; this.save(); }, 200);
   }
   handleInput(data: string): void {
     if (this.closed) return;
@@ -73,30 +81,103 @@ export class ReaderTerminal implements vscode.Pseudoterminal {
     if (keys.has(sequence)) {
       if (hadPending && !this.escapeWasHidden) this.hidden = false;
       if (this.hidden || this.busy) return;
-      this.screen.move(keys.get(sequence)!); this.changed(); return;
+      const movement = keys.get(sequence)!;
+      if (sequence.endsWith('~')) this.screen.page(Math.sign(movement)); else this.screen.move(movement);
+      this.changed(); return;
     }
     // A preceding Escape hides immediately, but should not swallow the next command.
     if (this.hidden || this.busy) return;
     if (data === 'j' || data === '\r') this.screen.move(1);
     else if (data === 'k') this.screen.move(-1);
-    else if (data === ' ' || data === '\x06') this.screen.move(this.screen.rows);
-    else if (data === '\x02') this.screen.move(-this.screen.rows);
+    else if (data === ' ' || data === '\x06') this.screen.page(1);
+    else if (data === '\x02') this.screen.page(-1);
     else if (data === 'n') this.screen.nextChapter(1);
     else if (data === 'p') this.screen.nextChapter(-1);
     else if (data === 'g') { void this.prompt('toc'); return; }
     else if (data === '/') { void this.prompt('search'); return; }
     else if (data === 'i') { void this.showImages(); return; }
     else if (data === 'B') { void this.prompt('bookmarks'); return; }
-    else if (data === 'b') {
-      const locator = this.screen.locator;
-      if (!this.state.bookmarks.some(b => b.chapter === locator.chapter && b.offset === locator.offset)) {
-        this.state.bookmarks.push({ ...locator, label: this.screen.lines[this.screen.row].text.slice(0, 100) || this.screen.book.chapters[locator.chapter].title });
-        this.state.bookmarks = this.state.bookmarks.slice(-500);
-      }
-      this.save();
-    } else if (data === '?') { void this.prompt('help'); return; }
+    else if (data === 'b') { this.addBookmark(); return; }
+    else if (data === 's') { this.showProgress(); return; }
+    else if (data === 'l') { void this.promptLocation(); return; }
+    else if (data === '?') { void this.prompt('help'); return; }
     else return;
     this.changed();
+  }
+  get snapshot() {
+    return { book: this.screen.book, position: this.screen.locator, bookmarks: structuredClone(this.state.bookmarks), hidden: this.hidden,
+      progress: readingProgress(this.screen.book, this.screen.locator, this.screen.row, this.screen.rows, this.screen.lines.length) };
+  }
+  showProgress() {
+    const snapshot = this.snapshot;
+    vscode.window.setStatusBarMessage(progressLabel(snapshot.progress), 7000);
+    return { position: snapshot.position, progress: snapshot.progress, bookmarks: snapshot.bookmarks };
+  }
+  goTo(locator: Locator): void {
+    if (this.closed || !Number.isSafeInteger(locator.chapter) || !Number.isSafeInteger(locator.offset)) return;
+    this.hidden = false; this.pending = '';
+    this.screen.go(locator); this.changed(); this.save();
+  }
+  goToLocation(input: string): void { this.goTo(parseLocation(this.screen.book, input)); }
+  page(direction: number): void { if (!this.closed) { this.resume(); this.screen.page(direction); this.changed(); } }
+  private defaultBookmarkLabel(): string {
+    const { chapter, offset } = this.screen.locator;
+    return this.screen.book.chapters[chapter].text.slice(offset, offset + 100).replace(/\s+/g, ' ').trim() || this.screen.book.chapters[chapter].title;
+  }
+  addBookmark(label?: string): Bookmark | undefined {
+    if (this.closed) return;
+    const position = this.screen.locator;
+    let bookmark = this.state.bookmarks.find(b => b.chapter === position.chapter && b.offset === position.offset);
+    if (!bookmark) {
+      if (this.state.bookmarks.length >= 500) { vscode.window.setStatusBarMessage('Bookmark limit reached (500). Delete a bookmark first.', 4000); return; }
+      bookmark = { ...position, label: this.defaultBookmarkLabel() };
+      this.state.bookmarks.push(bookmark);
+    }
+    if (label !== undefined) bookmark.label = safeText(label).replace(/\s+/g, ' ').trim().slice(0, 120) || this.defaultBookmarkLabel();
+    this.save();
+    vscode.window.setStatusBarMessage('Bookmark saved', 2500);
+    return { ...bookmark };
+  }
+  renameBookmark(position: Locator, label: string): void {
+    const bookmark = this.state.bookmarks.find(b => b.chapter === position.chapter && b.offset === position.offset);
+    if (!bookmark || this.closed) return;
+    bookmark.label = safeText(label).replace(/\s+/g, ' ').trim().slice(0, 120) || bookmark.label;
+    this.save();
+  }
+  deleteBookmark(position: Locator): void {
+    if (this.closed) return;
+    this.state.bookmarks = this.state.bookmarks.filter(b => b.chapter !== position.chapter || b.offset !== position.offset);
+    this.save();
+  }
+  async promptAddBookmark(): Promise<void> {
+    if (this.closed || this.busy) return;
+    this.busy = true;
+    try {
+      const label = await vscode.window.showInputBox({ title: 'Add bookmark', value: this.defaultBookmarkLabel(), validateInput: value => value.trim() ? undefined : 'Enter a bookmark name.' });
+      if (label !== undefined && !this.closed) this.addBookmark(label);
+    } finally { this.busy = false; }
+  }
+  async editBookmark(action: 'rename' | 'delete', position?: Locator, label?: string): Promise<void> {
+    if (this.closed || this.busy) return;
+    this.busy = true;
+    try {
+      const selected = position ? this.state.bookmarks.find(b => b.chapter === position.chapter && b.offset === position.offset) : await vscode.window.showQuickPick(this.state.bookmarks.map(b => ({ ...b, description: `Chapter ${b.chapter + 1}` })), { title: action === 'rename' ? 'Rename bookmark' : 'Delete bookmark' });
+      if (!selected || this.closed) return;
+      if (action === 'delete') this.deleteBookmark(selected);
+      else {
+        const name = label ?? await vscode.window.showInputBox({ title: 'Rename bookmark', value: selected.label, validateInput: value => value.trim() ? undefined : 'Enter a bookmark name.' });
+        if (name !== undefined && !this.closed) this.renameBookmark(selected, name);
+      }
+    } finally { this.busy = false; }
+  }
+  async showBookmarks(): Promise<void> { if (!this.closed && !this.busy) { this.resume(); await this.prompt('bookmarks'); } }
+  async promptLocation(): Promise<void> {
+    if (this.closed || this.busy) return;
+    this.busy = true;
+    try {
+      const input = await vscode.window.showInputBox({ title: 'Go to location', prompt: 'A text location number or percentage, for example 12 or 40%', value: String(this.snapshot.progress.location), validateInput: value => { try { parseLocation(this.screen.book, value); return undefined; } catch (error) { return (error as Error).message; } } });
+      if (input !== undefined && !this.closed) this.goToLocation(input);
+    } finally { this.busy = false; }
   }
   async showImages(id?: string, all = false): Promise<void> {
     if (this.closed || this.busy) return;
@@ -124,7 +205,7 @@ export class ReaderTerminal implements vscode.Pseudoterminal {
         await vscode.window.showQuickPick([
           'j/k or arrows: move one line', 'Space / PageDown / PageUp: move one screen',
           'n/p: next / previous chapter', 'g: table of contents', '/: search book (first 200 matches)',
-          'b: bookmark current position; B: list bookmarks', 'i: open an illustration in an editor tab', 'Escape: hide text; Resume Reading command: continue'
+          'b: save bookmark; B: list bookmarks', 's: show progress; l: go to location or percentage', 'i: open an illustration in an editor tab', 'Escape: hide text; Resume Reading command: continue'
         ], { title: 'Reader keys' });
         return;
       }

@@ -4,7 +4,7 @@
 
 Read books in VS Code in a tab that looks like console output. VSCodeReader uses a real **Terminal** tab named `output`, your terminal font and colors, and keyboard navigation. Illustrations open on demand in separate editor tabs.
 
-Version **0.0.3** supports EPUB, FictionBook, plain text, CBZ comics, HTML and Markdown. [Implementation plan (Russian)](docs/IMPLEMENTATION_PLAN.md) · [Architecture decisions (Russian)](docs/ADR-001-terminal-reader.md).
+The current **0.1.0** build supports EPUB, FictionBook, plain text, CBZ comics, HTML and Markdown. [Implementation plan (Russian)](docs/IMPLEMENTATION_PLAN.md) · [Architecture decisions (Russian)](docs/ADR-001-terminal-reader.md).
 
 ## Supported formats
 
@@ -22,11 +22,15 @@ Ordinary `.zip` files are not treated as books. PDF and MOBI/AZW3 are not suppor
 
 ## Get started
 
-1. Install dependencies with `npm ci` (Node.js 22).
-2. Open the repository in VS Code and press F5 (`Run VSCodeReader`).
-3. In the new window, run **VSCodeReader: Open Book** and select a supported file. An [Alice EPUB sample](samples/README.md) is included for testing.
+1. Install `vscode-reader-0.1.0.vsix` using **Extensions: Install from VSIX…**.
+2. Click the **book icon** in the left Activity Bar to open **Reader → Library**.
+3. Click **Open book…** and choose a supported file. Click **Continue reading** to resume later.
 
-Alternatively, run `npm run package`, choose **Extensions: Install from VSIX…**, and install `vscode-reader-0.0.3.vsix`. Requires VS Code 1.95.0 or later.
+The version stays at **0.1.0**; each package build replaces `vscode-reader-0.1.0.vsix` and removes obsolete project VSIX files.
+
+To build the VSIX locally, use `npm ci` and `npm run package` (Node.js 22). For development, press F5 (`Run VSCodeReader`). Requires VS Code 1.95.0 or later. An [Alice EPUB sample](samples/README.md) is included for testing.
+
+The terminal is called `output` to keep its console appearance. The sidebar shows the actual book title. Change `vscodeReader.terminalName` if you prefer another terminal name.
 
 Supported files also have an **Open Book** action in the Explorer context menu. Opening the same book again reuses its reading session. Entries in a multi-book FB2 archive have separate sessions and reading positions.
 
@@ -37,19 +41,29 @@ With focus in the reader terminal:
 | Keys | Action |
 | --- | --- |
 | `j` / `k`, ↓ / ↑ | Next / previous line |
-| Space / PageDown, PageUp | Next / previous screen |
+| Space / PageDown, PageUp | Next / previous screen, crossing chapters |
 | `n` / `p` | Next / previous chapter or comic page |
 | `g` | Table of contents |
 | `/` | Search the book, up to 200 matches |
-| `b` | Bookmark the current position |
+| `b` | Save a quick bookmark (with confirmation) |
 | `B` | Go to a bookmark |
+| `s` | Show chapter, screen, location and percentage |
+| `l` | Jump to a location number or percentage |
 | `i` | Open the current illustration, or choose one if there are several |
 | `?` | Keyboard help |
 | Escape | Clear the text and show `ready` |
 
 **VSCodeReader: Resume Reading** restores hidden text or reopens the last book after closing the terminal or restarting VS Code. **VSCodeReader: Hide Text** hides the active reading session from the Command Palette. After Escape, use Resume Reading to bring the text back.
 
-Positions and bookmarks are saved locally. Resizing the terminal reflows text around the same passage. Changing the source file starts a new reading position. Book contents are not sent over the network.
+## Progress and bookmarks
+
+The **Library** sidebar shows the current book, chapter, screen, text location and percentage. Click the progress row to jump, or press `l` and enter a location such as `12` or a percentage such as `40%`.
+
+Screens are sized to the terminal and change when you resize it. Text locations are fixed units of roughly 1,000 characters across the book, so they stay stable across changes in width and font size. These are reading locations, not printed page numbers. The exact passage is saved automatically during navigation, on hide/close, and at shutdown; repeated resizing preserves the original text anchor.
+
+Press `b` for a quick bookmark, or click **Add bookmark…** in the sidebar to give it a name. Saved bookmarks appear in **Bookmarks**. Click one to return to its passage; use the pencil and trash buttons to rename or delete it. **Recent books** remembers the last ten books, and **Open books** lets you switch between active sessions.
+
+Position and bookmark data stay local. Changing the source file starts a new reading position. Book contents are not sent over the network.
 
 ## Images and comics
 
@@ -78,7 +92,7 @@ npm run test:host    # integration checks in VS Code 1.95.3
 npm run package      # VSIX without samples, tests or node_modules
 ```
 
-The host test downloads VS Code on its first run. Linux needs Electron libraries and a display (`xvfb-run` in CI). Set `VSCODE_TEST_VERSION` to test another VS Code version. Tests use synthetic books and the included EPUB; they do not download books.
+The host test runs VS Code twice to verify that positions and named bookmarks survive a full restart. It downloads VS Code on its first run. Linux needs Electron libraries and a display (`xvfb-run` in CI). Set `VSCODE_TEST_VERSION` to test another VS Code version. Tests use synthetic books and the included EPUB; they do not download books.
 
 Parsing and image extraction run in cancellable workers. Limits: 100 MiB input, 300 MiB declared archive contents, 10,000 archive entries, 10 MiB per extracted resource, and 32 MiB of extracted text. Uncompressed FB2/TXT/HTML/Markdown documents are limited to 32 MiB; a compressed FB2 entry is limited to 10 MiB.
 

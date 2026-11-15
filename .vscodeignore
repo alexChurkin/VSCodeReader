@@ -19,3 +19,5 @@ dist/host.cjs.LEGAL.txt
 licenses/**
 
 .vscode-test/**
+
+AGENTS.md

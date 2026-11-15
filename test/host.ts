@@ -1,6 +1,11 @@
 import * as vscode from 'vscode';
 import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
+import { readFile } from 'node:fs/promises';
+import { join } from 'node:path';
 import { zip, fb2, png } from './fixtures';
+import { ReaderLibrary, type LibraryBook } from '../src/library';
+import type { ReadingProgress } from '../src/progress';
 import { ReaderTerminal } from '../src/terminal';
 import { restoreState, type Book, type ReadingState } from '../src/book';
 
@@ -13,6 +18,24 @@ export async function run(): Promise<void> {
   const extension = vscode.extensions.getExtension('alexChurkin.vscode-reader');
   assert.ok(extension);
   await extension.activate();
+  await vscode.commands.executeCommand('workbench.view.extension.vscodeReader');
+  assert.ok(extension.packageJSON.contributes.viewsContainers.activitybar.some((item: { icon: string }) => item.icon === 'media/book.svg'));
+  await vscode.workspace.fs.stat(vscode.Uri.joinPath(extension.extensionUri, 'media', 'book.svg'));
+  const persistenceDirectory = vscode.Uri.joinPath(extension.extensionUri, '.vscode-test', 'reader-fixtures');
+  const persistenceUri = vscode.Uri.joinPath(persistenceDirectory, 'persistence.txt');
+  const expectedUri = vscode.Uri.joinPath(persistenceDirectory, 'expected-position.json');
+  type Status = { position: { chapter: number; offset: number }; bookmarks: Array<{ chapter: number; offset: number; label: string }>; progress: ReadingProgress };
+  if (process.env.READER_TEST_PASS === 'restore') {
+    const expected = JSON.parse(Buffer.from(await vscode.workspace.fs.readFile(expectedUri)).toString()) as Status;
+    await Promise.race([vscode.commands.executeCommand('vscodeReader.resume'), pause(10_000).then(() => { throw new Error('Resume did not restore the saved book.'); })]);
+    const actual = await vscode.commands.executeCommand<Status>('vscodeReader.showProgress');
+    console.log('Restored position:', JSON.stringify(actual.position), 'expected:', JSON.stringify(expected.position));
+    assert.deepEqual(actual.position, expected.position, 'Exact position should survive a full VS Code restart');
+    assert.deepEqual(actual.bookmarks, expected.bookmarks, 'Named bookmarks should survive a full VS Code restart');
+    assert.equal(actual.progress.location, expected.progress.location);
+    console.log('Persistence passed after a full VS Code restart: position and named bookmarks restored.');
+    return;
+  }
   const book: Book = { title: 'Private title', author: '', chapters: [{ id: 'one', title: 'One', text: Array.from({ length: 80 }, (_, i) => `line ${i}`).join('\n'), anchors: {} }, { id: 'two', title: 'Two', text: 'next chapter', anchors: {} }], toc: [] };
   let saved: ReadingState | undefined;
   const reader = new ReaderTerminal(book, '', restoreState(undefined, book), state => { saved = structuredClone(state); });
@@ -27,6 +50,21 @@ export async function run(): Promise<void> {
     reader.handleInput('p'); reader.handleInput('j');
     assert.equal(reader.screen.locator.offset, 7);
     reader.handleInput('b'); assert.equal(saved?.bookmarks.length, 1);
+    const bookmark = reader.snapshot.bookmarks[0];
+    reader.renameBookmark(bookmark, 'Named checkpoint');
+    assert.equal(reader.snapshot.bookmarks[0].label, 'Named checkpoint');
+    const sidebarBook = (): LibraryBook => ({ id: 'test', title: book.title, hidden: reader.snapshot.hidden, progress: reader.snapshot.progress, bookmarks: reader.snapshot.bookmarks, toc: book.toc });
+    const sidebar = new ReaderLibrary(() => ({ active: sidebarBook(), open: [sidebarBook()], recent: [] }));
+    const tree = sidebar.getChildren();
+    assert.equal(tree[0].command?.command, 'vscodeReader.openBook');
+    const current = tree.find(item => item.label === book.title)!;
+    assert.ok(current); assert.match(String(current.children![0].label), /Location/);
+    const bookmarks = current.children!.find(item => String(item.label).startsWith('Bookmarks'))!;
+    assert.equal(bookmarks.children![0].contextValue, 'readerBookmark');
+    assert.equal(bookmarks.children![0].label, 'Named checkpoint');
+    reader.deleteBookmark(bookmark); assert.equal(reader.snapshot.bookmarks.length, 0);
+    reader.addBookmark('Saved checkpoint');
+    sidebar.dispose();
     // A split arrow hides provisionally then resumes only if reading was active.
     reader.handleInput('\x1b'); assert.match(output, /ready$/);
     reader.handleInput('[B'); assert.doesNotMatch(output, /ready$/);
@@ -98,5 +136,37 @@ export async function run(): Promise<void> {
     session.dispose();
     await until(() => !vscode.window.terminals.includes(session));
   }
-  console.log('VS Code host checks passed: EPUB, FB2, FB2.ZIP, FBZ, TXT, CBZ, HTML, HTM, Markdown, native image tabs, navigation, hide, resize, bookmarks and reopen.');
+  await vscode.workspace.fs.writeFile(persistenceUri, Buffer.from(Array.from({ length: 800 }, (_, i) => `Paragraph ${i}: persistent reading position and bookmarks.`).join('\n')));
+  await vscode.commands.executeCommand('vscodeReader.openBook', persistenceUri);
+  const middle = await vscode.commands.executeCommand<Status>('vscodeReader.goToLocation', '50%');
+  const savedBookmark = await vscode.commands.executeCommand('vscodeReader.addBookmark', 'Middle checkpoint');
+  assert.ok(savedBookmark);
+  await vscode.commands.executeCommand('vscodeReader.renameBookmark', { position: middle.position }, 'Renamed checkpoint');
+  await vscode.commands.executeCommand('vscodeReader.goToLocation', '75%');
+  const discarded = await vscode.commands.executeCommand<Status>('vscodeReader.showProgress');
+  await vscode.commands.executeCommand('vscodeReader.addBookmark', 'Temporary checkpoint');
+  await vscode.commands.executeCommand('vscodeReader.deleteBookmark', { position: discarded.position });
+  await vscode.commands.executeCommand('vscodeReader.goToBookmark', { position: middle.position });
+  const expected = await vscode.commands.executeCommand<Status>('vscodeReader.showProgress');
+  assert.deepEqual(expected.position, middle.position);
+  assert.equal(expected.bookmarks.length, 1); assert.equal(expected.bookmarks[0].label, 'Renamed checkpoint');
+  await vscode.workspace.fs.writeFile(expectedUri, Buffer.from(JSON.stringify(expected)));
+  // The test runner terminates the host instead of doing a normal shutdown.
+  // Observe completed autosave files before allowing it to exit; the next
+  // process verifies that real startup restores those exact persisted values.
+  const source = await vscode.workspace.fs.readFile(persistenceUri);
+  const hash = createHash('sha256').update(source).digest('hex');
+  const key = 'book.v1.' + createHash('sha256').update(persistenceUri.toString()).update('\0').update(hash).update('utf-8').digest('hex');
+  let durable = false;
+  for (let i = 0; i < 100; i++) {
+    try {
+      const saved = JSON.parse(await readFile(join(process.env.READER_TEST_STORAGE!, key + '.json'), 'utf8'));
+      const last = JSON.parse(await readFile(join(process.env.READER_TEST_STORAGE!, 'lastBook.json'), 'utf8'));
+      durable = saved.chapter === expected.position.chapter && saved.offset === expected.position.offset && JSON.stringify(saved.bookmarks) === JSON.stringify(expected.bookmarks) && last.uri === persistenceUri.toString();
+      if (durable) break;
+    } catch { /* Autosave may still be committing. */ }
+    await pause(50);
+  }
+  assert.ok(durable, 'Navigation and bookmark edits should autosave to durable files');
+  console.log('VS Code host checks passed: formats, image tabs, library view, paging, progress and bookmark CRUD.');
 }

@@ -52,11 +52,12 @@ export class Screen {
   rows = 24;
   lines: Line[] = [];
   readonly prefix: string;
+  private offset = 0;
   constructor(readonly book: Book, prefix: string, locator: Locator) {
     this.prefix = safeText(prefix).replace(/\n/g, '').slice(0, 12);
     this.go(locator);
   }
-  get locator(): Locator { return { chapter: this.chapter, offset: this.lines[this.row]?.offset ?? 0 }; }
+  get locator(): Locator { return { chapter: this.chapter, offset: this.offset }; }
   resize(columns: number, rows: number): void {
     const position = this.locator;
     this.columns = Math.max(1, Math.min(500, Math.floor(columns)));
@@ -66,6 +67,7 @@ export class Screen {
   go(locator: Locator): void {
     this.chapter = Math.max(0, Math.min(this.book.chapters.length - 1, locator.chapter));
     this.lines = wrap(this.book.chapters[this.chapter].text, Math.max(1, this.columns - stringWidth(this.effectivePrefix) - 1));
+    this.offset = Math.max(0, Math.min(this.book.chapters[this.chapter].text.length, locator.offset));
     this.row = 0;
     for (let i = 0; i < this.lines.length; i++) {
       if (this.lines[i].offset > locator.offset) break;
@@ -74,9 +76,21 @@ export class Screen {
   }
   move(delta: number): void {
     this.row = Math.max(0, Math.min(this.lines.length - 1, this.row + delta));
+    this.offset = this.lines[this.row]?.offset ?? 0;
   }
   nextChapter(delta: number): void {
-    this.go({ chapter: this.chapter + delta, offset: 0 });
+    const chapter = Math.max(0, Math.min(this.book.chapters.length - 1, this.chapter + delta));
+    if (chapter !== this.chapter) this.go({ chapter, offset: 0 });
+  }
+  page(direction: number): void {
+    if (direction > 0) {
+      if (this.row + this.rows < this.lines.length) this.move(this.rows);
+      else if (this.chapter < this.book.chapters.length - 1) this.nextChapter(1);
+    } else if (this.row > 0) this.move(-this.rows);
+    else if (this.chapter > 0) {
+      this.nextChapter(-1);
+      this.move((Math.ceil(this.lines.length / this.rows) - 1) * this.rows);
+    }
   }
   private get effectivePrefix(): string { return stringWidth(this.prefix) < this.columns - 1 ? this.prefix : ''; }
   render(): string {

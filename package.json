@@ -2,7 +2,7 @@
   "name": "vscode-reader",
   "displayName": "VSCodeReader",
   "description": "Read EPUB, FB2, TXT, CBZ, HTML and Markdown in a quiet terminal tab, with illustrations in editor tabs.",
-  "version": "0.0.3",
+  "version": "0.1.0",
   "publisher": "alexChurkin",
   "private": true,
   "license": "UNLICENSED",
@@ -19,7 +19,8 @@
   "main": "./dist/extension.cjs",
   "activationEvents": [
     "onCommand:vscodeReader.openBook",
-    "onCommand:vscodeReader.resume"
+    "onCommand:vscodeReader.resume",
+    "onView:vscodeReader.library"
   ],
   "capabilities": {
     "untrustedWorkspaces": {
@@ -33,19 +34,77 @@
     "commands": [
       {
         "command": "vscodeReader.openBook",
-        "title": "VSCodeReader: Open Book"
+        "title": "VSCodeReader: Open Book",
+        "icon": "$(folder-opened)"
       },
       {
         "command": "vscodeReader.resume",
-        "title": "VSCodeReader: Resume Reading"
+        "title": "VSCodeReader: Resume Reading",
+        "icon": "$(play)"
       },
       {
         "command": "vscodeReader.hide",
-        "title": "VSCodeReader: Hide Text"
+        "title": "VSCodeReader: Hide Text",
+        "icon": "$(eye-closed)"
       },
       {
         "command": "vscodeReader.openImage",
         "title": "VSCodeReader: Open Image"
+      },
+      {
+        "command": "vscodeReader.focusSession",
+        "title": "VSCodeReader: Continue Selected Book",
+        "icon": "$(book)"
+      },
+      {
+        "command": "vscodeReader.openRecent",
+        "title": "VSCodeReader: Open Recent Book",
+        "icon": "$(history)"
+      },
+      {
+        "command": "vscodeReader.nextPage",
+        "title": "VSCodeReader: Next Screen",
+        "icon": "$(arrow-down)"
+      },
+      {
+        "command": "vscodeReader.previousPage",
+        "title": "VSCodeReader: Previous Screen",
+        "icon": "$(arrow-up)"
+      },
+      {
+        "command": "vscodeReader.showProgress",
+        "title": "VSCodeReader: Show Reading Progress",
+        "icon": "$(info)"
+      },
+      {
+        "command": "vscodeReader.goToLocation",
+        "title": "VSCodeReader: Go to Location",
+        "icon": "$(location)"
+      },
+      {
+        "command": "vscodeReader.addBookmark",
+        "title": "VSCodeReader: Add Bookmark",
+        "icon": "$(bookmark)"
+      },
+      {
+        "command": "vscodeReader.showBookmarks",
+        "title": "VSCodeReader: Show Bookmarks",
+        "icon": "$(bookmark)"
+      },
+      {
+        "command": "vscodeReader.goToBookmark",
+        "title": "VSCodeReader: Go to Bookmark",
+        "icon": "$(bookmark)"
+      },
+      {
+        "command": "vscodeReader.renameBookmark",
+        "title": "VSCodeReader: Rename Bookmark",
+        "icon": "$(edit)"
+      },
+      {
+        "command": "vscodeReader.deleteBookmark",
+        "title": "VSCodeReader: Delete Bookmark",
+        "icon": "$(trash)"
       }
     ],
     "menus": {
@@ -54,6 +113,40 @@
           "command": "vscodeReader.openBook",
           "when": "resourceFilename =~ /\\.(epub|fb2|fb2\\.zip|fbz|txt|cbz|html?|md|markdown)$/i",
           "group": "navigation@90"
+        }
+      ],
+      "view/title": [
+        {
+          "command": "vscodeReader.openBook",
+          "when": "view == vscodeReader.library",
+          "group": "navigation@0"
+        },
+        {
+          "command": "vscodeReader.resume",
+          "when": "view == vscodeReader.library",
+          "group": "navigation@1"
+        },
+        {
+          "command": "vscodeReader.addBookmark",
+          "when": "view == vscodeReader.library && vscodeReader.hasBook",
+          "group": "navigation@2"
+        },
+        {
+          "command": "vscodeReader.hide",
+          "when": "view == vscodeReader.library && vscodeReader.hasBook",
+          "group": "navigation@3"
+        }
+      ],
+      "view/item/context": [
+        {
+          "command": "vscodeReader.renameBookmark",
+          "when": "view == vscodeReader.library && viewItem == readerBookmark",
+          "group": "inline@0"
+        },
+        {
+          "command": "vscodeReader.deleteBookmark",
+          "when": "view == vscodeReader.library && viewItem == readerBookmark",
+          "group": "inline@1"
         }
       ]
     },
@@ -81,6 +174,24 @@
           "description": "Encoding for TXT, HTML and Markdown documents without a BOM or HTML charset declaration. Applies to new reading sessions."
         }
       }
+    },
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "vscodeReader",
+          "title": "Reader",
+          "icon": "media/book.svg"
+        }
+      ]
+    },
+    "views": {
+      "vscodeReader": [
+        {
+          "id": "vscodeReader.library",
+          "name": "Library",
+          "visibility": "visible"
+        }
+      ]
     }
   },
   "scripts": {
@@ -90,8 +201,9 @@
     "test": "node --import tsx --test test/*.test.ts",
     "check": "npm run typecheck && npm test && npm run build",
     "vscode:prepublish": "npm run build",
-    "package": "vsce package --no-dependencies --allow-missing-repository",
-    "test:host": "npm run build && node scripts/test-host.mjs"
+    "package": "vsce package --no-dependencies --allow-missing-repository --out vscode-reader-0.1.0.vsix",
+    "test:host": "npm run build && node scripts/test-host.mjs",
+    "prepackage": "node scripts/clean-packages.mjs"
   },
   "dependencies": {
     "domhandler": "6.0.1",
