@@ -36,7 +36,7 @@ Supported files also have an **Open Book** action in the Explorer context menu. 
 
 ## Keyboard controls
 
-A dim hint bar stays at the bottom of the terminal. It adapts to the available width and shows the relevant keys while reading, searching, choosing an item or naming a bookmark. Bookmark confirmations appear there too. Press `?` for the full key list.
+A dim hint bar stays at the bottom of the terminal. It adapts to the available width and shows the relevant keys while reading, searching, choosing an item or naming a bookmark. The current page, total pages and percentage stay visible on the right, for example `Page 12/47 | 24.3%`. Page numbers take priority over hints and bookmark confirmations on narrow terminals. Press `?` for the full key list.
 
 With focus in the reader terminal:
 
@@ -49,8 +49,8 @@ With focus in the reader terminal:
 | `/` | Search the book, up to 200 matches |
 | `b` | Save a quick bookmark (with confirmation) |
 | `B` | Go to a bookmark |
-| `s` | Show chapter, screen, location and percentage |
-| `l` | Jump to a location number or percentage |
+| `s` | Show chapter, screen, page and percentage |
+| `l` | Jump to a page number or percentage |
 | `i` | Open the current illustration, or choose one if there are several |
 | `?` | Keyboard help |
 | Escape | Hide the text and show resume instructions |
@@ -61,9 +61,9 @@ With focus in the reader terminal:
 
 ## Progress and bookmarks
 
-The **Library** sidebar shows the current book, chapter, screen, text location and percentage. Click the progress row to jump, or press `l` and enter a location such as `12` or a percentage such as `40%`.
+The **Library** sidebar shows the current book, chapter, screen, page and percentage. Click the progress row to jump, or press `l` and enter a page such as `12` or a percentage such as `40%`.
 
-Screens are sized to the terminal and change when you resize it. Text locations are fixed units of roughly 1,000 characters across the book, so they stay stable across changes in width and font size. These are reading locations, not printed page numbers. The exact passage is saved automatically during navigation, on hide/close, and at shutdown; repeated resizing preserves the original text anchor.
+Screens are sized to the terminal and change when you resize it. Text pages are fixed units of roughly 1,000 characters across the whole book, so page numbers stay stable across changes in width and font size. They are virtual reading pages, not printed page numbers. CBZ uses the actual image page number and count. The exact passage is saved automatically during navigation, on hide/close, and at shutdown; repeated resizing preserves the original text anchor.
 
 Press `b` for a quick bookmark, or click **Add bookmark…** in the sidebar to give it a name. Saved bookmarks appear in **Bookmarks**. Click one to return to its passage; use the pencil and trash buttons to rename or delete it. **Recent books** remembers the last ten books, and **Open books** lets you switch between active sessions.
 

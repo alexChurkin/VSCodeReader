@@ -32,3 +32,17 @@ test('terminal tabs use book titles with custom templates and old default migrat
   assert.equal(terminalName('{title}', '', 'file.txt'), 'file.txt');
   assert.doesNotMatch(terminalName('{title}', '\x1b[2J\nTitle', 'file.txt'), /\x1b|\n/);
 });
+
+test('page status remains visible ahead of hints and feedback, including narrow terminals', () => {
+  const progress = { page: 12, pages: 47, percent: 24.3 };
+  for (const mode of ['reading', 'search', 'location', 'picker', 'image-loading'] as HintMode[]) {
+    const line = footerText({ mode, columns: 100, progress, message: 'Bookmark saved', images: true, bookmarks: true });
+    assert.match(line, /Page 12\/47 \| 24\.3%$/);
+    assert.ok(stringWidth(line) < 100);
+  }
+  assert.match(footerText({ mode: 'reading', columns: 25, progress, message: 'A very long notification that must not displace the page counter' }), /Page 12\/47 \| 24\.3%$/);
+  assert.equal(footerText({ mode: 'reading', columns: 12, progress }), 'Page 12/47');
+  assert.equal(footerText({ mode: 'reading', columns: 8, progress }), '12/47');
+  assert.doesNotMatch(footerText({ mode: 'hidden', columns: 100, progress }), /Page|24\.3%/);
+  for (const columns of [1, 2, 5, 8, 12, 25, 80]) assert.ok(stringWidth(footerText({ mode: 'reading', columns, progress, message: 'Saved 中文 👩‍💻' })) <= Math.max(0, columns - 1));
+});

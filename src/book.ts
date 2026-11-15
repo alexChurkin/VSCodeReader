@@ -11,7 +11,7 @@ export interface BookImage {
   mediaType: string;
   chapters: number[];
 }
-export interface Book { title: string; author: string; chapters: Chapter[]; toc: TocItem[]; images?: BookImage[] }
+export interface Book { title: string; author: string; chapters: Chapter[]; toc: TocItem[]; images?: BookImage[]; imagePages?: boolean }
 export interface Locator { chapter: number; offset: number }
 export interface Bookmark extends Locator { label: string }
 export interface ReadingState extends Locator { version: 1; bookmarks: Bookmark[] }

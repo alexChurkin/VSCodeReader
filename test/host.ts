@@ -50,12 +50,14 @@ export async function run(): Promise<void> {
     assert.equal(reader.screen.rows, 5, 'One row should be reserved for hints');
     assert.match(output, /\x1b\[6;1H\x1b\[2K\x1b\[2m/);
     assert.match(output, /\? help/);
+    assert.match(output, /Page 1\/1 \| 0%/);
     let exits = 0;
     const exitSubscription = reader.onDidClose(code => { exits++; assert.equal(code, 0); });
     reader.handleInput('n'); assert.match(output, /next chapter/);
     reader.handleInput('p'); reader.handleInput('j');
     assert.equal(reader.screen.locator.offset, 7);
     reader.handleInput('b'); assert.equal(saved?.bookmarks.length, 1);
+    assert.match(output, /Page 1\/1 \|/);
     assert.match(output, /Bookmark saved/);
     const bookmark = reader.snapshot.bookmarks[0];
     reader.renameBookmark(bookmark, 'Named checkpoint');
@@ -65,7 +67,7 @@ export async function run(): Promise<void> {
     const tree = sidebar.getChildren();
     assert.equal(tree[0].command?.command, 'vscodeReader.openBook');
     const current = tree.find(item => item.label === book.title)!;
-    assert.ok(current); assert.match(String(current.children![0].label), /Location/);
+    assert.ok(current); assert.match(String(current.children![0].label), /Page/);
     const bookmarks = current.children!.find(item => String(item.label).startsWith('Bookmarks'))!;
     assert.equal(bookmarks.children![0].contextValue, 'readerBookmark');
     assert.equal(bookmarks.children![0].label, 'Named checkpoint');

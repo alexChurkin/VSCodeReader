@@ -30,15 +30,23 @@ export function readingProgress(book: Book, locator: Locator, row: number, rows:
 export function parseLocation(book: Book, input: string): Locator {
   const text = input.trim().replace(',', '.');
   const total = lengths(book).reduce((a, b) => a + b, 0);
+  const pages = book.imagePages ? book.chapters.length : Math.max(1, Math.ceil(total / LOCATION_SIZE));
   if (/^\d+(?:\.\d+)?%$/.test(text)) {
     const percent = Number(text.slice(0, -1));
-    if (percent <= 100) return locatorAtOffset(book, Math.round((total - 1) * percent / 100));
+    if (percent <= 100) return book.imagePages ? { chapter: Math.round((pages - 1) * percent / 100), offset: 0 } : locatorAtOffset(book, Math.round((total - 1) * percent / 100));
   } else if (/^\d+$/.test(text)) {
-    const location = Number(text), max = Math.max(1, Math.ceil(total / LOCATION_SIZE));
-    if (Number.isSafeInteger(location) && location >= 1 && location <= max) return locatorAtOffset(book, (location - 1) * LOCATION_SIZE);
+    const location = Number(text);
+    if (Number.isSafeInteger(location) && location >= 1 && location <= pages) return book.imagePages ? { chapter: location - 1, offset: 0 } : locatorAtOffset(book, (location - 1) * LOCATION_SIZE);
   }
-  throw new Error(`Enter a location from 1 to ${Math.max(1, Math.ceil(total / LOCATION_SIZE))}, or a percentage from 0% to 100%.`);
+  throw new Error(`Enter a page from 1 to ${pages}, or a percentage from 0% to 100%.`);
 }
-export function progressLabel(progress: ReadingProgress): string {
-  return `Chapter ${progress.chapter}/${progress.chapters} · Screen ${progress.screen}/${progress.screens} · Location ${progress.location}/${progress.locations} · ${progress.percent}%`;
+export function progressLabel(progress: ReadingProgress, book: Pick<Book, 'imagePages'> = {}): string {
+  const page = pageProgress(book, progress);
+  return `Chapter ${progress.chapter}/${progress.chapters} · Screen ${progress.screen}/${progress.screens} · Page ${page.page}/${page.pages} · ${page.percent}%`;
+}
+
+export interface PageProgress { page: number; pages: number; percent: number }
+export function pageProgress(book: Pick<Book, 'imagePages'>, progress: ReadingProgress): PageProgress {
+  if (book.imagePages) return { page: progress.chapter, pages: progress.chapters, percent: progress.chapters <= 1 ? 100 : Math.round((progress.chapter - 1) / (progress.chapters - 1) * 1000) / 10 };
+  return { page: progress.location, pages: progress.locations, percent: progress.percent };
 }

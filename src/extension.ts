@@ -5,7 +5,7 @@ import { LIMITS } from './archive';
 import { terminalName } from './footer';
 import { ReaderStorage } from './storage';
 import { ReaderLibrary, LibraryItem, type RecentBook, type LibraryTarget, type LibraryBook } from './library';
-import type { ReadingProgress } from './progress';
+import { pageProgress, type ReadingProgress } from './progress';
 import { type ReadingState, restoreState, safeText } from './book';
 import { supportedBook, type WorkerRequest, type BookResult, type ReadOptions } from './formats';
 import type { ImageData } from './images';
@@ -76,7 +76,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   let recent: RecentBook[] = Array.isArray(recentValue) ? recentValue.filter(item => item && typeof item.uri === 'string').slice(0, 10) : [];
   const asLibraryBook = (session: Session): LibraryBook => {
     const snapshot = session.reader.snapshot;
-    return { id: session.id, title: snapshot.book.title, hidden: snapshot.hidden, progress: snapshot.progress, bookmarks: snapshot.bookmarks, toc: snapshot.book.toc };
+    return { id: session.id, title: snapshot.book.title, hidden: snapshot.hidden, progress: snapshot.progress, bookmarks: snapshot.bookmarks, toc: snapshot.book.toc, imagePages: snapshot.book.imagePages };
   };
   const library = new ReaderLibrary(() => {
     const active = activeSession();
@@ -88,7 +88,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     void vscode.commands.executeCommand('setContext', 'vscodeReader.hasBook', sessions.size > 0);
   };
   const remember = (source: RecentBook, progress: ReadingProgress, last = false) => {
-    const book = { ...source, progress: `Location ${progress.location}/${progress.locations} · ${progress.percent}%` };
+    const page = pageProgress(source, progress);
+    const book = { ...source, progress: `Page ${page.page}/${page.pages} · ${page.percent}%` };
     recent = [book, ...recent.filter(item => item.uri !== book.uri || item.entry !== book.entry)].slice(0, 10);
     update('recentBooks', recent);
     if (last) update('lastBook', book);
@@ -154,7 +155,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         const rawState = await storage.get<ReadingState>(key);
         const state = restoreState(rawState, book);
         if (!rawState) state.chapter = Math.max(0, book.chapters.findIndex(c => c.text.replace(/\[image: [^\]]*\]|\[empty chapter\]|\s/g, '').length > 0));
-        const source: RecentBook = { uri: id, entry: options.entry, encoding: options.encoding, title: book.title.slice(0, 200) };
+        const source: RecentBook = { uri: id, entry: options.entry, encoding: options.encoding, title: book.title.slice(0, 200), imagePages: book.imagePages };
         const reader = new ReaderTerminal(book, config.get<string>('linePrefix', ''), state, value => {
           update(key, structuredClone(value));
           remember(source, reader.snapshot.progress, activeSession()?.reader === reader);

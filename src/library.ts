@@ -1,11 +1,12 @@
 import * as vscode from 'vscode';
 import type { Locator, Bookmark, TocItem } from './book';
 import { safeText } from './book';
+import { pageProgress } from './progress';
 import type { ReadingProgress } from './progress';
 
-export interface RecentBook { uri: string; entry?: string; encoding?: 'utf-8' | 'windows-1251'; title?: string; progress?: string }
+export interface RecentBook { uri: string; entry?: string; encoding?: 'utf-8' | 'windows-1251'; title?: string; progress?: string; imagePages?: boolean }
 export interface LibraryTarget { sessionId?: string; position?: Locator }
-export interface LibraryBook { id: string; title: string; hidden: boolean; progress: ReadingProgress; bookmarks: Bookmark[]; toc: TocItem[] }
+export interface LibraryBook { id: string; title: string; hidden: boolean; progress: ReadingProgress; bookmarks: Bookmark[]; toc: TocItem[]; imagePages?: boolean }
 export interface LibraryModel { active?: LibraryBook; open: LibraryBook[]; recent: RecentBook[] }
 export class LibraryItem extends vscode.TreeItem {
   children?: LibraryItem[];
@@ -38,9 +39,10 @@ export class ReaderLibrary implements vscode.TreeDataProvider<LibraryItem>, vsco
       const prefix = 'book:' + encodeURIComponent(active.id);
       const target = { sessionId: active.id };
       const p = active.progress;
-      const progress = node(prefix + ':progress', `Location ${p.location}/${p.locations} · ${p.percent}%`, 'location', 'vscodeReader.goToLocation', [undefined, target]);
+      const page = pageProgress(active, p);
+      const progress = node(prefix + ':progress', `Page ${page.page}/${page.pages} · ${page.percent}%`, 'location', 'vscodeReader.goToLocation', [undefined, target]);
       progress.description = `Chapter ${p.chapter}/${p.chapters} · Screen ${p.screen}/${p.screens}`;
-      progress.tooltip = 'Go to a text location or percentage. Screens depend on terminal size; text locations stay fixed.';
+      progress.tooltip = 'Go to a page or percentage. Screens depend on terminal size; text pages stay fixed.';
       const bookmarks = active.bookmarks.map(b => {
         const item = node(`${prefix}:bookmark:${b.chapter}:${b.offset}`, b.label, 'bookmark', 'vscodeReader.goToBookmark', [{ ...target, position: b }]);
         item.description = `Chapter ${b.chapter + 1}`;

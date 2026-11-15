@@ -78,7 +78,7 @@
       },
       {
         "command": "vscodeReader.goToLocation",
-        "title": "VSCodeReader: Go to Location",
+        "title": "VSCodeReader: Go to Page",
         "icon": "$(location)"
       },
       {

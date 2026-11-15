@@ -1,6 +1,6 @@
 import * as vscode from 'vscode';
 import { type Book, type ReadingState, type BookImage, type Bookmark, type Locator, safeText } from './book';
-import { parseLocation, readingProgress, progressLabel } from './progress';
+import { parseLocation, readingProgress, progressLabel, pageProgress } from './progress';
 import { footerText, type HintMode } from './footer';
 import { Screen, findMatches } from './screen';
 
@@ -74,7 +74,7 @@ export class ReaderTerminal implements vscode.Pseudoterminal {
     let frame = this.hidden ? CLEAR + 'ready' : this.screen.render();
     if (this.hasFooter) {
       const end = this.screen.chapter === this.screen.book.chapters.length - 1 && this.screen.row + this.screen.rows >= this.screen.lines.length;
-      const hint = footerText({ mode: this.hidden ? 'hidden' : this.mode, columns: this.viewport.columns, images: !!this.screen.book.images?.length, bookmarks: !!this.state.bookmarks.length, end, message: this.feedback });
+      const hint = footerText({ mode: this.hidden ? 'hidden' : this.mode, columns: this.viewport.columns, images: !!this.screen.book.images?.length, bookmarks: !!this.state.bookmarks.length, end, message: this.feedback, progress: pageProgress(this.screen.book, readingProgress(this.screen.book, this.screen.locator, this.screen.row, this.screen.rows, this.screen.lines.length)) });
       frame += `\x1b[${this.viewport.rows};1H\x1b[2K\x1b[2m${hint}\x1b[0m`;
     }
     this.writes.fire(frame);
@@ -159,7 +159,7 @@ export class ReaderTerminal implements vscode.Pseudoterminal {
   }
   showProgress() {
     const snapshot = this.snapshot;
-    vscode.window.setStatusBarMessage(progressLabel(snapshot.progress), 7000);
+    vscode.window.setStatusBarMessage(progressLabel(snapshot.progress, snapshot.book), 7000);
     return { position: snapshot.position, progress: snapshot.progress, bookmarks: snapshot.bookmarks };
   }
   goTo(locator: Locator): void {
@@ -226,7 +226,7 @@ export class ReaderTerminal implements vscode.Pseudoterminal {
     if (this.closed || this.busy) return;
     this.beginInteraction('location');
     try {
-      const input = await vscode.window.showInputBox({ title: 'Go to location', prompt: 'A text location number or percentage, for example 12 or 40%', value: String(this.snapshot.progress.location), validateInput: value => { try { parseLocation(this.screen.book, value); return undefined; } catch (error) { return (error as Error).message; } } });
+      const input = await vscode.window.showInputBox({ title: 'Go to page', prompt: 'A page number or percentage, for example 12 or 40%', value: String(pageProgress(this.screen.book, this.snapshot.progress).page), validateInput: value => { try { parseLocation(this.screen.book, value); return undefined; } catch (error) { return (error as Error).message; } } });
       if (input !== undefined && !this.closed) this.goToLocation(input);
     } finally { this.endInteraction(); }
   }
@@ -256,7 +256,7 @@ export class ReaderTerminal implements vscode.Pseudoterminal {
         await vscode.window.showQuickPick([
           'j/k or arrows: move one line', 'Space / PageDown / PageUp: move one screen',
           'n/p: next / previous chapter', 'g: table of contents', '/: search book (first 200 matches)',
-          'b: save bookmark; B: list bookmarks', 's: show progress; l: go to location or percentage', 'i: open an illustration in an editor tab', 'Escape: hide text; r: resume hidden text; q: close reader'
+          'b: save bookmark; B: list bookmarks', 's: show progress; l: go to page or percentage', 'i: open an illustration in an editor tab', 'Escape: hide text; r: resume hidden text; q: close reader'
         ], { title: 'Reader keys' });
         return;
       }

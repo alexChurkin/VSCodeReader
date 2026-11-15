@@ -54,7 +54,7 @@ export async function readBook(bytes: Uint8Array, options: ReadOptions): Promise
       if (!pages.length) throw new Error('CBZ contains no supported raster images.');
       const images = pages.map((id, index) => ({ id, label: safeText(id), mediaType: 'image/' + (id.split('.').at(-1)!.toLowerCase().replace('jpg', 'jpeg')), chapters: [index] }));
       const chapters = pages.map((path, index) => ({ id: path, title: `Page ${index + 1}`, text: `[image: ${safeText(path)}]\n\nPress i to open this page in an editor tab.`, anchors: {} }));
-      return { kind: 'book', book: { title: safeText(posix.basename(options.filename)), author: '', chapters, toc: chapters.map((c, chapter) => ({ title: c.title, chapter, offset: 0, depth: 0 })), images } };
+      return { kind: 'book', book: { title: safeText(posix.basename(options.filename)), author: '', imagePages: true, chapters, toc: chapters.map((c, chapter) => ({ title: c.title, chapter, offset: 0, depth: 0 })), images } };
     } finally { archive.close(); }
   }
   if (name.endsWith('.fb2.zip') || name.endsWith('.fbz')) {
