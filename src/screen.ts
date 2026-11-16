@@ -37,13 +37,18 @@ function lazyLine(source: string, start: number, length: number, base: number): 
 export function wrap(text: string, columns: number): Line[] {
   const width = Math.max(1, Math.floor(columns));
   const result: Line[] = [];
+  const widths = new Map<string, number>();
   let base = 0;
   for (const paragraph of text.split('\n')) {
     let line = '', cells = 0, start = 0, lastSpace = -1;
     if (!paragraph) result.push({ text: '', offset: base });
     // Stream graphemes: never allocate an object per character for a huge paragraph.
     for (const part of graphemes(paragraph)) {
-      const size = /^[\x20-\x7e]$/.test(part.segment) ? 1 : stringWidth(part.segment);
+      let size = /^[\x20-\x7e]$/.test(part.segment) ? 1 : widths.get(part.segment);
+      if (size === undefined) {
+        size = stringWidth(part.segment);
+        if (widths.size < 1024 && part.segment.length <= 64) widths.set(part.segment, size);
+      }
       let broke = false;
       while (line && cells + size > width) {
         broke = true;
