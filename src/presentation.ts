@@ -2,7 +2,7 @@ import type { Element, ParentNode } from 'domhandler';
 import type { TextStyle } from './book';
 
 export interface CssRule { selector: string; declarations: Record<string, string>; specificity: number; order: number }
-const allowed = new Set(['font-weight', 'font-style', 'font-size', 'font-variation-settings', 'text-decoration', 'text-decoration-line', 'white-space', 'display', 'visibility']);
+const allowed = new Set(['font-weight', 'font-style', 'font-size', 'font-variation-settings', 'text-decoration', 'text-decoration-line', 'white-space', 'text-indent', 'display', 'visibility']);
 function declarations(source: string): Record<string, string> {
   const result: Record<string, string> = Object.create(null);
   for (const declaration of source.split(';')) {
@@ -77,8 +77,8 @@ function matches(node: Element, selector: string): boolean {
   }
   return true;
 }
-export interface Presentation extends TextStyle { quote: number; scale: number; pre: boolean; hidden: boolean; heading: number }
-export const plainPresentation: Presentation = { quote: 0, scale: 1, pre: false, hidden: false, heading: 0 };
+export interface Presentation extends TextStyle { listItem: boolean; hanging: boolean; quote: number; scale: number; pre: boolean; hidden: boolean; heading: number }
+export const plainPresentation: Presentation = { listItem: false, hanging: false, quote: 0, scale: 1, pre: false, hidden: false, heading: 0 };
 export function presentation(node: Element, inherited: Presentation, rules: CssRule[], fb2: boolean): Presentation {
   const tag = node.name.split(':').at(-1)!.toLowerCase();
   const style = { ...inherited };
@@ -114,7 +114,9 @@ export function presentation(node: Element, inherited: Presentation, rules: CssR
     const value = Number.parseFloat(size);
     if (Number.isFinite(value)) style.scale = Math.max(0.1, Math.min(10, size.endsWith('rem') ? value : size.endsWith('em') ? inherited.scale * value : size.endsWith('%') ? inherited.scale * value / 100 : size.endsWith('pt') ? value / 12 : size.endsWith('px') ? value / 16 : inherited.scale));
   }
+  const textIndent = get('text-indent'); if (textIndent && Number.isFinite(Number.parseFloat(textIndent))) style.hanging = Number.parseFloat(textIndent) < 0;
   const whiteSpace = get('white-space'); if (whiteSpace) style.pre = /pre|break-spaces/.test(whiteSpace);
+  style.listItem ||= tag === 'li' || node.attribs.role === 'listitem' || get('display') === 'list-item';
   style.hidden ||= get('display') === 'none' || get('visibility') === 'hidden';
   const semantic = /^h([1-6])$/.exec(tag)?.[1] ?? (/^heading[-_]?([1-6])(?:\b|[-_])/i.exec(node.attribs.class ?? '')?.[1]);
   const level = semantic ? Number(semantic) : node.attribs.role === 'heading' ? Math.max(1, Math.min(6, Number(node.attribs['aria-level']) || 2)) : fb2 && tag === 'title' ? 2 : fb2 && tag === 'subtitle' ? 3 : 0;

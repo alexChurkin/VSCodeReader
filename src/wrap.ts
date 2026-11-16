@@ -31,14 +31,23 @@ function lazyLine(source: string, start: number, length: number, base: number): 
   return { offset: base + start, get text() { return value ??= source.slice(start, start + length); } };
 }
 
-export function wrap(text: string, columns: number): Line[] {
+export function wrap(text: string, columns: number, firstLineIndent = 0): Line[] {
   const width = Math.max(1, Math.floor(columns));
   const result: Line[] = [];
+  const indent = Math.min(Math.max(0, Math.floor(firstLineIndent)), Math.max(0, width - 4));
+  let available = width - indent, indented = false;
+  const emit = (line: Line) => {
+    if (!indented && indent && line.text.length) {
+      indented = true;
+      result.push({ offset: line.offset, get text() { return ' '.repeat(indent) + line.text; }, runs: line.text.length ? [{ startIndex: indent, offset: line.offset, length: line.text.length }] : [] });
+    } else result.push(line);
+    available = indented || !indent ? width : width - indent;
+  };
   const widths = new Map<string, number>();
   let base = 0;
   for (const paragraph of text.split('\n')) {
     let line = '', cells = 0, start = 0, lastSpace = -1;
-    if (!paragraph) result.push({ text: '', offset: base });
+    if (!paragraph) emit({ text: '', offset: base });
     // Stream graphemes: never allocate an object per character for a huge paragraph.
     for (const part of graphemes(paragraph)) {
       let size = /^[\x20-\x7e]$/.test(part.segment) ? 1 : widths.get(part.segment);
@@ -47,23 +56,23 @@ export function wrap(text: string, columns: number): Line[] {
         if (widths.size < 1024 && part.segment.length <= 64) widths.set(part.segment, size);
       }
       let broke = false;
-      while (line && cells + size > width) {
+      while (line && cells + size > available) {
         broke = true;
         if (lastSpace > 0) {
-          result.push(lazyLine(paragraph, start, line.slice(0, lastSpace).trimEnd().length, base));
+          emit(lazyLine(paragraph, start, line.slice(0, lastSpace).trimEnd().length, base));
           start += lastSpace;
           line = line.slice(lastSpace);
           cells = stringWidth(line);
         } else {
-          result.push(lazyLine(paragraph, start, line.trimEnd().length, base));
+          emit(lazyLine(paragraph, start, line.trimEnd().length, base));
           line = ''; cells = 0; start = part.index;
         }
         lastSpace = -1;
       }
       if (broke && !line && part.segment === ' ') continue;
       if (!line) start = part.index;
-      if (size > width) {
-        result.push({ text: '\ufffd', offset: base + part.index });
+      if (size > available) {
+        emit({ text: '\ufffd', offset: base + part.index });
         line = ''; cells = 0; lastSpace = -1;
         continue;
       }
@@ -71,7 +80,7 @@ export function wrap(text: string, columns: number): Line[] {
       cells += size;
       if (part.segment === ' ') lastSpace = line.length;
     }
-    if (line) result.push(lazyLine(paragraph, start, line.trimEnd().length, base));
+    if (line) emit(lazyLine(paragraph, start, line.trimEnd().length, base));
     base += paragraph.length + 1;
   }
   return result;

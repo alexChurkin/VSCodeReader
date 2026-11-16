@@ -56,18 +56,31 @@ function tableLines(chapter: Chapter, table: BookTable, width: number): Line[] {
 }
 
 export function layoutChapter(chapter: Chapter, width: number): Line[] {
+  const blocks = [
+    ...(chapter.tables ?? []).filter(table => table.rows.length).map(table => ({ offset: table.offset, length: table.length, table })),
+    ...(chapter.paragraphs ?? []).map(paragraph => ({ ...paragraph, table: undefined })),
+  ].sort((a, b) => a.offset - b.offset);
+  if (!blocks.length) return wrap(chapter.text, width);
   const lines: Line[] = [];
+  const append = (start: number, end: number, indent = 0) => {
+    if (end <= start) return;
+    const text = chapter.text.slice(start, end);
+    const wrapped = wrap(text, width, indent);
+    if (lines.length && text.startsWith('\n') && start > 0 && chapter.text[start - 1] !== '\n') wrapped.shift();
+    if (end < chapter.text.length && text.endsWith('\n')) wrapped.pop();
+    for (const line of wrapped) lines.push({
+      get text() { return line.text; }, offset: start + line.offset,
+      ...(line.runs ? { runs: line.runs.map(run => ({ ...run, offset: start + run.offset })) } : {}),
+    });
+  };
   let cursor = 0;
-  for (const table of chapter.tables ?? []) {
-    if (table.offset < cursor || !table.rows.length) continue;
-    if (table.offset > cursor) for (const line of wrap(chapter.text.slice(cursor, table.offset), width)) lines.push({ get text() { return line.text; }, offset: cursor + line.offset });
-    for (const line of tableLines(chapter, table, width)) lines.push(line);
-    cursor = table.offset + table.length;
+  for (const block of blocks) {
+    if (block.offset < cursor) continue;
+    append(cursor, block.offset);
+    if (block.table) for (const line of tableLines(chapter, block.table, width)) lines.push(line);
+    else append(block.offset, block.offset + block.length, 4);
+    cursor = block.offset + block.length;
   }
-  if (!cursor) return wrap(chapter.text, width);
-  if (cursor < chapter.text.length) {
-    const base = cursor;
-    for (const line of wrap(chapter.text.slice(cursor), width)) lines.push({ get text() { return line.text; }, offset: base + line.offset });
-  }
+  append(cursor, chapter.text.length);
   return lines;
 }

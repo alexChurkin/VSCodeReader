@@ -231,6 +231,9 @@ export async function run(): Promise<void> {
     rich.setDimensions({ columns: 100, rows: 60 });
     assert.match(richOutput, /\x1b\[1;4mPublisher heading/);
     assert.match(richOutput, /\x1b\[1memphasized text/);
+    const richPlain = richOutput.replace(/\x1b\[[0-9;]*[A-Za-z]/g, '');
+    assert.match(richPlain, /^Publisher heading/);
+    assert.match(richPlain, /\r\n {4}Plain emphasized text/);
     assert.match(richOutput, /\x1b\[3mItalic value/);
     assert.match(richOutput, /\+---/);
     rich.startSearch('emphasized'); assert.match(richOutput, /\x1b\[1;7memphasized/);

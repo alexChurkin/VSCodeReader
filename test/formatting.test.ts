@@ -31,7 +31,7 @@ void test('EPUB loads publisher CSS headings and variable font weight without in
   assert.ok(styled(chapter, 'Chapter heading').some(span => span.bold && span.underline));
   assert.ok(styled(chapter, 'bold words').some(span => span.bold));
   assert.ok(styled(chapter, 'italics').some(span => span.italic));
-  assert.match(chapter.text, /  Subheading/); assert.match(chapter.text, /3\. Third/); assert.match(chapter.text, /4\. Fourth/);
+  assert.match(chapter.text, /(?:^|\n)Subheading/); assert.match(chapter.text, /3\. Third/); assert.match(chapter.text, /4\. Fourth/);
   assert.match(chapter.text, /  code\n    indentation/);
   assert.doesNotMatch(chapter.text, /\x1b/);
   assert.equal(chapter.anchors.heading, chapter.text.indexOf('Chapter heading'));

@@ -15,3 +15,4 @@
 - Preserve wheel/trackpad scrolling and terminal selection mode. Clean copying must keep source paragraphs/indentation and remove parser-owned image markers without deleting literal book text.
 - Keep installed Git revision metadata in the extension and VSIX, distinguish dirty development builds, and expose the latest release link in Library. Cache layout work with bounded retention; preserve graphemes and text anchors.
 - Preserve semantic heading/emphasis styles and adaptive table layouts in EPUB/HTML/Markdown. Keep ANSI escapes in the renderer, maintain source mappings for table cells, and never commit private debug books; use synthetic fixtures and optional READER_DEBUG_EPUB tests.
+- Keep headings flush left. Add display-only first-line indentation to ordinary prose paragraphs, excluding lists/hanging items, table cells, quotes, code, poetry, captions and contents; continuation lines and copied source text must not acquire that indent.

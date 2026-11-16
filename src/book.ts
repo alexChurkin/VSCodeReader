@@ -12,6 +12,7 @@ export interface Chapter {
   text: string;
   anchors: Record<string, number>;
   styles?: StyleSpan[];
+  paragraphs?: Array<{ offset: number; length: number }>;
   tables?: BookTable[];
   imageLinks?: ChapterImageLink[];
   imageMarkers?: ImageMarker[];

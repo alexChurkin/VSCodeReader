@@ -51,7 +51,7 @@ export function documentText(doc: { children: AnyNode[] }, rules: CssRule[] = []
   return { ...rendered, title: rendered.headings[0]?.title || title };
 }
 export interface HeadingReference { title: string; level: number; offset: number }
-export function renderNodes(nodes: AnyNode[], fb2 = false, markup = false, rules: CssRule[] = []): { text: string; anchors: Record<string, number>; images: ImageReference[]; markers: ImageMarker[]; links: LinkReference[]; headings: HeadingReference[]; styles: StyleSpan[]; tables: BookTable[] } {
+export function renderNodes(nodes: AnyNode[], fb2 = false, markup = false, rules: CssRule[] = []): { text: string; anchors: Record<string, number>; images: ImageReference[]; markers: ImageMarker[]; links: LinkReference[]; headings: HeadingReference[]; styles: StyleSpan[]; tables: BookTable[]; paragraphs: Array<{ offset: number; length: number }> } {
   const ignored = new Set(['script', 'style', 'head', 'iframe', 'object', 'embed', 'form', 'svg', 'audio', 'video']);
   const blocks = new Set([...(fb2 ? ['title', 'subtitle', 'epigraph', 'annotation', 'poem', 'stanza', 'v', 'cite', 'text-author'] : []), 'p', 'div', 'section', 'article', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'li', 'blockquote', 'pre', 'caption', 'tr', 'dt', 'dd']);
   let output = '';
@@ -63,6 +63,8 @@ export function renderNodes(nodes: AnyNode[], fb2 = false, markup = false, rules
   const linkStarts = new Map<AnyNode, Omit<LinkReference, 'length'>>();
   const headings: HeadingReference[] = [];
   const styles: StyleSpan[] = [];
+  const paragraphs: Array<{ offset: number; length: number }> = [];
+  const paragraphStarts = new Map<AnyNode, number>();
   const tables: BookTable[] = [];
   const tableStack: BookTable[] = [];
   const tableNodes = new Map<AnyNode, BookTable>();
@@ -107,6 +109,16 @@ export function renderNodes(nodes: AnyNode[], fb2 = false, markup = false, rules
     }
     if ((markup && ['template', 'noscript', 'button', 'select', 'textarea', 'input'].includes(tag)) || ignored.has(tag)) continue;
     if (end) {
+      const paragraphStart = paragraphStarts.get(node);
+      if (paragraphStart !== undefined) {
+        let prose = '', cursor = paragraphStart;
+        for (const marker of markers) {
+          if (marker.offset < paragraphStart || marker.offset >= output.length) continue;
+          prose += output.slice(cursor, marker.offset); cursor = marker.offset + marker.length;
+        }
+        prose += output.slice(cursor);
+        if (prose.trim() && !/^(?:[-*+•●○◦▪‣]|\d+(?:\.\d+)*[.)]|\[[ xX]\])\s/u.test(prose.trimStart())) paragraphs.push({ offset: paragraphStart, length: output.length - paragraphStart });
+      }
       const link = linkStarts.get(node);
       if (link) links.push({ ...link, length: output.length - link.offset });
       const caption = captionNodes.get(node);
@@ -159,7 +171,18 @@ export function renderNodes(nodes: AnyNode[], fb2 = false, markup = false, rules
     if (heading) {
       boundary();
       headings.push({ title: content(node) || 'Section', level: style.heading, offset: output.length });
-      output += '  '.repeat(Math.min(5, Math.max(0, style.heading - 1)));
+    }
+    if (tag === 'p' && !style.listItem && !style.heading && !style.quote && !style.pre && !style.hanging && !tableStack.length) {
+      let ordinary = true;
+      let ancestor: AnyNode | null = node;
+      while (ancestor && isElement(ancestor)) {
+        if (['li', 'ul', 'ol', 'dl', 'dt', 'dd', 'blockquote', 'pre', 'code', 'table', 'caption', 'figure', 'figcaption', 'nav', 'poem', 'stanza', 'v', 'title', 'subtitle', 'epigraph'].includes(localName(ancestor.name))
+          || /(?:^|\s)(?:poem|poetry|verse|stanza|caption|code|pre|list[-_\w]*|bullet[-_\w]*|numbered[-_\w]*|[\w-]*toc)(?:\s|$)/i.test(ancestor.attribs.class ?? '')
+          || /^(?:heading|list|listitem|table|row|cell|navigation|doc-toc)$/.test(ancestor.attribs.role ?? '')
+          || (ancestor.attribs['epub:type'] ?? '').split(/\s+/).includes('toc')) { ordinary = false; break; }
+        ancestor = ancestor.parent;
+      }
+      if (ordinary) paragraphStarts.set(node, output.length);
     }
     if (tag === 'blockquote') boundary();
     if (tag === 'li') {
@@ -192,5 +215,5 @@ export function renderNodes(nodes: AnyNode[], fb2 = false, markup = false, rules
     }
   }
   // Keep anchor offsets valid: no global trim/collapse after collecting them.
-  return { text: output || '[empty chapter]', anchors, images, markers, links, headings, styles, tables };
+  return { text: output || '[empty chapter]', anchors, images, markers, links, headings, styles, tables, paragraphs };
 }
