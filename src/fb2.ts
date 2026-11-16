@@ -1,3 +1,5 @@
+import { attachFootnotes, fragment } from './footnotes';
+import type { LinkReference } from './xml';
 import type { Element } from 'domhandler';
 import { LIMITS } from './archive';
 import { type Book, type Chapter, type TocItem, type BookImage, safeText } from './book';
@@ -20,12 +22,14 @@ export function readFb2(bytes: Uint8Array): Book {
   const author = info ? elements(info, 'author').map(a => children(a, 'first-name').concat(children(a, 'middle-name'), children(a, 'last-name')).map(content).join(' ')).join(', ') : '';
   const chapters: Chapter[] = [], toc: TocItem[] = [];
   const images: BookImage[] = elements(root, 'binary').filter(b => b.attribs.id && isRasterMediaType(b.attribs['content-type'])).map(b => ({ id: b.attribs.id, label: safeText(b.attribs.id), mediaType: b.attribs['content-type'], chapters: [] }));
+  const references: LinkReference[][] = [];
   let serial = 0;
   const addChapter = (nodes: Element[], label: string) => {
     const sections = nodes.flatMap(n => localName(n.name) === 'section' ? [n, ...elements(n, 'section')] : []);
     for (const section of sections) section.attribs.id ||= `__vscode_reader_section_${serial++}`;
     const rendered = renderNodes(nodes, true);
     const index = chapters.length;
+    references.push(rendered.links);
     chapters.push({ id: `body-${index}`, title: safeText(label), text: rendered.text, anchors: rendered.anchors, imageLinks: [] });
     if (!sections.length) toc.push({ title: label, chapter: index, offset: 0, depth: 0 });
     for (const section of sections) {
@@ -53,6 +57,12 @@ export function readFb2(bytes: Uint8Array): Book {
     if (!sections.length && !prologue.length && content(body)) addChapter([body], label);
   }
   if (!chapters.length) throw new Error('FB2 has no readable body.');
+  chapters.forEach((chapter, index) => attachFootnotes(chapter, references[index], href => {
+    const id = fragment(href);
+    if (!id) return undefined;
+    const target = chapters.findIndex(item => Object.hasOwn(item.anchors, id));
+    return target < 0 ? undefined : { chapter: target, offset: chapters[target].anchors[id] };
+  }));
   return { title: title ? content(title) : 'FictionBook', author, chapters, toc, images };
 }
 export function fb2Image(bytes: Uint8Array, id: string): Buffer {

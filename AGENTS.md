@@ -11,3 +11,4 @@
 - Include the current 12-character Git commit SHA in the GitHub Release title (for example `VSCodeReader 0.1.0 · code abc123def456`) and link the full commit in its description. Keep the stable download URL.
 - `npm run check` must include ESLint with zero warnings, strict TypeScript checks, unit tests and the production build. Fix lint findings rather than disabling rules across the project.
 - Keep terminal image links scoped to their own reader and image references. Hidden/closed readers and stale frames must not open images; preserve the keyboard image picker and the native image editor tabs.
+- Personal notes/annotations are deferred. Preserve source-book footnotes, per-session jump history, per-book saved search queries, and live reading layout settings without moving text anchors.

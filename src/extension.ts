@@ -12,8 +12,9 @@ import type { ImageData } from './images';
 import { isMarkup } from './markup';
 import type { TextEncoding } from './encoding';
 import { previewImage } from './image-preview';
+import type { ReadingLayout } from './screen';
 import { ReaderTerminal } from './terminal';
-import { ReaderImageLinks } from './terminal-links';
+import { ReaderLinks } from './terminal-links';
 
 interface Session { id: string; source: RecentBook; terminal: vscode.Terminal; reader: ReaderTerminal }
 type LastBook = RecentBook;
@@ -72,12 +73,16 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     if (stat.size > LIMITS.archive) throw new Error('Book exceeds the 100 MiB file limit.');
     return vscode.workspace.fs.readFile(uri);
   };
+  const readLayout = (): ReadingLayout => {
+    const config = vscode.workspace.getConfiguration('vscodeReader');
+    return { maxTextWidth: config.get<number>('maxTextWidth', 0), horizontalPadding: config.get<number>('horizontalPadding', 0), centerText: config.get<boolean>('centerText', false) };
+  };
   const activeSession = () => [...sessions.values()].find(s => !s.reader.isClosed && s.terminal === vscode.window.activeTerminal) ?? (latest && !latest.reader.isClosed ? latest : [...sessions.values()].filter(s => !s.reader.isClosed).at(-1));
   const recentValue = await storage.get<RecentBook[]>('recentBooks');
   let recent: RecentBook[] = Array.isArray(recentValue) ? recentValue.filter(item => item && typeof item.uri === 'string').slice(0, 10) : [];
   const asLibraryBook = (session: Session): LibraryBook => {
     const snapshot = session.reader.snapshot;
-    return { id: session.id, title: snapshot.book.title, hidden: snapshot.hidden, progress: snapshot.progress, bookmarks: snapshot.bookmarks, toc: snapshot.book.toc, imagePages: snapshot.book.imagePages };
+    return { id: session.id, title: snapshot.book.title, hidden: snapshot.hidden, progress: snapshot.progress, bookmarks: snapshot.bookmarks, toc: snapshot.book.toc, imagePages: snapshot.book.imagePages, canGoBack: snapshot.canGoBack, canGoForward: snapshot.canGoForward };
   };
   const library = new ReaderLibrary(() => {
     const active = activeSession();
@@ -116,7 +121,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     if (latest === session) latest = [...sessions.values()].at(-1);
     refresh();
   };
-  context.subscriptions.push(vscode.window.registerTerminalLinkProvider(new ReaderImageLinks(terminal => [...sessions.values()].find(session => session.terminal === terminal)?.reader)));
+  context.subscriptions.push(vscode.window.registerTerminalLinkProvider(new ReaderLinks(terminal => [...sessions.values()].find(session => session.terminal === terminal)?.reader)));
   context.subscriptions.push(library, vscode.window.createTreeView('vscodeReader.library', { treeDataProvider: library, showCollapseAll: true }));
   refresh();
   const open = async (resource?: vscode.Uri, saved?: LastBook) => {
@@ -172,6 +177,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
             }, reader.onDidClose);
           } catch (error) { if (!(error instanceof vscode.CancellationError)) throw error; }
         });
+        reader.configureLayout(readLayout());
         const name = terminalName(config.get<string>('terminalName', '{title}'), book.title, uri.path.split('/').at(-1) || 'Reader');
         const terminal = vscode.window.createTerminal({ name, pty: reader, location: vscode.TerminalLocation.Panel, iconPath: new vscode.ThemeIcon('book'), isTransient: true });
         const session: Session = { id: keyId, source, terminal, reader };
@@ -195,6 +201,33 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         const saved = typeof raw === 'string' ? { uri: raw } : raw && typeof raw === 'object' && typeof raw.uri === 'string' ? raw : undefined;
         await open(saved ? vscode.Uri.parse(saved.uri) : undefined, saved);
       }
+    }),
+    vscode.commands.registerCommand('vscodeReader.goBack', target => { const session = selectedSession(target); focusSession(session); session?.reader.travel(-1); }),
+    vscode.commands.registerCommand('vscodeReader.goForward', target => { const session = selectedSession(target); focusSession(session); session?.reader.travel(1); }),
+    vscode.commands.registerCommand('vscodeReader.find', async (query?: unknown, target?: unknown) => {
+      const session = selectedSession(target); if (!session) return;
+      focusSession(session);
+      if (typeof query === 'string') session.reader.startSearch(query); else await session.reader.promptSearch();
+      return session.reader.snapshot.search;
+    }),
+    vscode.commands.registerCommand('vscodeReader.nextMatch', () => { const session = activeSession(); focusSession(session); session?.reader.nextMatch(1); }),
+    vscode.commands.registerCommand('vscodeReader.previousMatch', () => { const session = activeSession(); focusSession(session); session?.reader.nextMatch(-1); }),
+    vscode.commands.registerCommand('vscodeReader.clearSearch', () => activeSession()?.reader.clearSearch()),
+    vscode.commands.registerCommand('vscodeReader.showFootnotes', target => { const session = selectedSession(target); focusSession(session); return session?.reader.showFootnotes(); }),
+    vscode.commands.registerCommand('vscodeReader.readingLayout', async () => {
+      const selected = await vscode.window.showQuickPick([
+        { label: 'Full terminal width', layout: { maxTextWidth: 0, horizontalPadding: 0, centerText: false } },
+        { label: 'Comfortable: 80 columns, centered', layout: { maxTextWidth: 80, horizontalPadding: 2, centerText: true } },
+        { label: 'Wide: 100 columns, centered', layout: { maxTextWidth: 100, horizontalPadding: 2, centerText: true } },
+        { label: 'Custom settings…', layout: undefined },
+      ], { title: 'Reading layout' });
+      if (!selected) return;
+      if (!selected.layout) { await vscode.commands.executeCommand('workbench.action.openSettings', '@ext:alexChurkin.vscode-reader'); return; }
+      const config = vscode.workspace.getConfiguration('vscodeReader');
+      for (const [key, value] of Object.entries(selected.layout)) await config.update(key, value, vscode.ConfigurationTarget.Global);
+    }),
+    vscode.workspace.onDidChangeConfiguration(event => {
+      if (event.affectsConfiguration('vscodeReader')) for (const session of sessions.values()) session.reader.configureLayout(readLayout());
     }),
     vscode.commands.registerCommand('vscodeReader.hide', () => activeSession()?.reader.hide()),
     vscode.commands.registerCommand('vscodeReader.openImage', (id?: string) => activeSession()?.reader.showImages(typeof id === 'string' ? id : undefined, true)),

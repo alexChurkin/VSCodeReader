@@ -46,3 +46,16 @@ void test('page status remains visible ahead of hints and feedback, including na
   assert.doesNotMatch(footerText({ mode: 'hidden', columns: 100, progress }), /Page|24\.3%/);
   for (const columns of [1, 2, 5, 8, 12, 25, 80]) assert.ok(stringWidth(footerText({ mode: 'reading', columns, progress, message: 'Saved 中文 👩‍💻' })) <= Math.max(0, columns - 1));
 });
+
+void test('search, history and footnote hints preserve the page counter at every width', () => {
+  const progress = { page: 12, pages: 47, percent: 24.3 };
+  const search = { query: 'Alice', index: 2, count: 10, truncated: false };
+  assert.match(footerText({ mode: 'reading', columns: 100, search, progress }), /Find 2\/10.*\[.*\].*c clear/);
+  assert.match(footerText({ mode: 'reading', columns: 100, history: true, progress }), /u back.*U forward/);
+  assert.match(footerText({ mode: 'reading', columns: 100, footnotes: true, progress }), /f footnotes/);
+  for (const columns of [2, 5, 12, 25, 80, 200]) {
+    const line = footerText({ mode: 'reading', columns, progress, search, history: true, footnotes: true });
+    assert.ok(stringWidth(line) < columns);
+    if (columns >= 25) assert.match(line, /Page 12\/47 \| 24\.3%$/);
+  }
+});

@@ -1,3 +1,5 @@
+import { attachFootnotes } from './footnotes';
+import type { LinkReference } from './xml';
 import { decodeXml as decode } from './encoding';
 import { isRasterMediaType } from './images';
 import { Archive, resolveHref } from './archive';
@@ -28,15 +30,12 @@ export async function readEpub(bytes: Uint8Array, signal?: AbortSignal): Promise
         if (archive.has(path) && !images.some(image => image.id === path)) images.push({ id: path, label: safeText(path), mediaType: item.attribs['media-type'], chapters: [] });
       } catch { /* Remote images are never fetched. */ }
     }
-    for (const itemref of elements(spine, 'itemref')) {
+    const references: LinkReference[][] = [];
+    const loadChapter = async (path: string) => {
       signal?.throwIfAborted();
-      if (itemref.attribs.linear === 'no') continue;
-      const item = manifest.get(itemref.attribs.idref);
-      if (!item?.attribs.href) throw new Error('EPUB spine references a missing manifest item.');
-      if (!['application/xhtml+xml', 'text/html'].includes(item.attribs['media-type'])) throw new Error('EPUB contains unsupported spine content.');
-      const path = resolveHref(packagePath, item.attribs.href).path;
       const source = decode(await archive.read(path));
       const heading = chapterText(source);
+      references.push(heading.links);
       const imageLinks: NonNullable<Chapter['imageLinks']> = [];
       for (const ref of heading.images) {
         try {
@@ -52,8 +51,44 @@ export async function readEpub(bytes: Uint8Array, signal?: AbortSignal): Promise
       const titleDoc = xml(source);
       const title = content(elements(titleDoc, 'h1')[0] ?? elements(titleDoc, 'h2')[0] ?? elements(titleDoc, 'title')[0] ?? titleDoc);
       chapters.push({ id: path, title: title.slice(0, 200) || `Section ${chapters.length + 1}`, text: heading.text, anchors: heading.anchors, imageLinks });
+    };
+    const auxiliary: string[] = [];
+    for (const itemref of elements(spine, 'itemref')) {
+      const item = manifest.get(itemref.attribs.idref);
+      if (!item?.attribs.href) throw new Error('EPUB spine references a missing manifest item.');
+      if (!['application/xhtml+xml', 'text/html'].includes(item.attribs['media-type'])) {
+        if (itemref.attribs.linear === 'no') continue;
+        throw new Error('EPUB contains unsupported spine content.');
+      }
+      const path = resolveHref(packagePath, item.attribs.href).path;
+      if (itemref.attribs.linear === 'no') auxiliary.push(path); else await loadChapter(path);
     }
     if (!chapters.length) throw new Error('EPUB has no readable chapters.');
+    for (const path of auxiliary) if (!chapters.some(chapter => chapter.id === path)) await loadChapter(path);
+    // Explicit EPUB noterefs can point outside the spine. Load only package
+    // documents reached by these references, with the archive's shared limits.
+    const documents = new Set<string>();
+    for (const item of manifest.values()) {
+      if (['application/xhtml+xml', 'text/html'].includes(item.attribs['media-type']) && item.attribs.href) {
+        try { documents.add(resolveHref(packagePath, item.attribs.href).path); } catch { /* External documents stay inert. */ }
+      }
+    }
+    for (let index = 0; index < chapters.length; index++) {
+      for (const ref of references[index]) {
+        if (!ref.footnote) continue;
+        let path: string;
+        try { path = resolveHref(chapters[index].id, ref.href).path; } catch { continue; }
+        if (documents.has(path) && archive.has(path) && !chapters.some(chapter => chapter.id === path)) await loadChapter(path);
+      }
+    }
+    chapters.forEach((chapter, index) => attachFootnotes(chapter, references[index], href => {
+      try {
+        const target = resolveHref(chapter.id, href);
+        const destination = target.path === chapter.id ? index : chapters.findIndex(item => item.id === target.path);
+        if (destination < 0 || !target.fragment || !Object.hasOwn(chapters[destination].anchors, target.fragment)) return undefined;
+        return { chapter: destination, offset: chapters[destination].anchors[target.fragment] };
+      } catch { return undefined; }
+    }));
     const toc: TocItem[] = [];
     const add = (base: string, href: string, title: string, depth: number) => {
       try {

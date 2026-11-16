@@ -2,7 +2,9 @@ import * as vscode from 'vscode';
 import { type Book, type ReadingState, type BookImage, type Bookmark, type Locator, safeText } from './book';
 import { parseLocation, readingProgress, progressLabel, pageProgress } from './progress';
 import { footerText, type HintMode } from './footer';
-import { Screen, findMatches } from './screen';
+import { Screen, type ReadingLayout } from './screen';
+import { NavigationHistory } from './navigation';
+import { BookSearch } from './search';
 
 const CLEAR = '\x1b[2J\x1b[3J\x1b[H';
 export class ReaderTerminal implements vscode.Pseudoterminal {
@@ -13,6 +15,8 @@ export class ReaderTerminal implements vscode.Pseudoterminal {
   private readonly writes = new vscode.EventEmitter<string>();
   readonly onDidWrite = this.writes.event;
   readonly screen: Screen;
+  readonly search: BookSearch;
+  private readonly history = new NavigationHistory();
   private linkRevision = 0;
   private hidden = false;
   private closed = false;
@@ -28,6 +32,8 @@ export class ReaderTerminal implements vscode.Pseudoterminal {
   private feedbackTimer: ReturnType<typeof setTimeout> | undefined;
   constructor(book: Book, prefix: string, private state: ReadingState, private persist: (state: ReadingState) => void, private imagePreview?: (image: BookImage) => Promise<void>) {
     this.screen = new Screen(book, prefix, state);
+    this.search = new BookSearch(book, state.searchQuery);
+    this.search.align(state);
   }
   open(dimensions?: vscode.TerminalDimensions): void {
     this.opened = true;
@@ -73,10 +79,10 @@ export class ReaderTerminal implements vscode.Pseudoterminal {
   private draw(): void {
     if (this.closed) return;
     this.linkRevision++;
-    let frame = this.hidden ? CLEAR + 'ready' : this.screen.render();
+    let frame = this.hidden ? CLEAR + 'ready' : this.screen.render(this.search.highlights(this.screen.chapter));
     if (this.hasFooter) {
       const end = this.screen.chapter === this.screen.book.chapters.length - 1 && this.screen.row + this.screen.rows >= this.screen.lines.length;
-      const hint = footerText({ mode: this.hidden ? 'hidden' : this.mode, columns: this.viewport.columns, images: !!this.screen.book.images?.length, bookmarks: !!this.state.bookmarks.length, end, message: this.feedback, progress: pageProgress(this.screen.book, readingProgress(this.screen.book, this.screen.locator, this.screen.row, this.screen.rows, this.screen.lines.length)) });
+      const hint = footerText({ mode: this.hidden ? 'hidden' : this.mode, columns: this.viewport.columns, images: !!this.screen.book.images?.length, bookmarks: !!this.state.bookmarks.length, end, search: this.search.status, history: this.history.canGoBack || this.history.canGoForward, footnotes: !!this.screen.book.chapters[this.screen.chapter].footnotes?.length, message: this.feedback, progress: pageProgress(this.screen.book, readingProgress(this.screen.book, this.screen.locator, this.screen.row, this.screen.rows, this.screen.lines.length)) });
       frame += `\x1b[${this.viewport.rows};1H\x1b[2K\x1b[2m${hint}\x1b[0m`;
     }
     this.writes.fire(frame);
@@ -89,6 +95,59 @@ export class ReaderTerminal implements vscode.Pseudoterminal {
     if (this.closed || this.hidden || this.busy || revision !== this.linkRevision) return;
     await this.showImages(imageId);
   }
+  footnoteLinks(line: string) {
+    if (this.closed || this.hidden || this.busy) return [];
+    return this.screen.footnoteLinks(line).map(link => ({ ...link, revision: this.linkRevision }));
+  }
+  openFootnoteLink(id: string, revision: number): void {
+    if (this.closed || this.hidden || this.busy || revision !== this.linkRevision) return;
+    this.followFootnote(id);
+  }
+  followFootnote(id: string): void {
+    if (this.closed || this.hidden || this.busy) return;
+    const note = this.screen.book.chapters[this.screen.chapter].footnotes?.find(note => note.id === id);
+    if (note) { this.goTo(note.target); this.notice('Footnote | u back to reading | U forward'); }
+  }
+  async showFootnotes(): Promise<void> {
+    if (this.closed || this.hidden || this.busy) return;
+    const notes = this.screen.book.chapters[this.screen.chapter].footnotes ?? [];
+    const first = this.screen.lines[this.screen.row]?.offset ?? 0;
+    const last = this.screen.lines[this.screen.row + this.screen.rows]?.offset ?? Infinity;
+    const visible = notes.filter(note => note.offset >= first && note.offset < last);
+    const choices = visible.length ? visible : notes;
+    if (!choices.length) { this.notice('No internal references in this chapter'); return; }
+    if (choices.length === 1) { this.followFootnote(choices[0].id); return; }
+    this.beginInteraction('picker');
+    try {
+      const chosen = await vscode.window.showQuickPick(choices.map(note => ({ label: note.label, description: this.screen.book.chapters[note.target.chapter].title, target: note.target })), { title: 'Footnotes / internal references' });
+      if (chosen && !this.closed && !this.hidden) { this.goTo(chosen.target); this.notice('Footnote | u back to reading | U forward'); }
+    } finally { this.endInteraction(); }
+  }
+  configureLayout(layout: Partial<ReadingLayout>): void {
+    if (this.closed) return;
+    this.screen.setLayout(layout); this.draw(); this.changes.fire();
+  }
+  travel(direction: number): void {
+    if (this.closed || this.busy) return;
+    const target = this.history.travel(this.screen.locator, direction);
+    if (!target) { this.notice(direction < 0 ? 'No earlier jump' : 'No later jump'); return; }
+    this.hidden = false; this.pending = ''; this.screen.go(target); this.search.align(this.screen.locator); this.changed(); this.save();
+  }
+  startSearch(query: string): void {
+    if (this.closed) return;
+    this.search.setQuery(query);
+    this.state.searchQuery = this.search.query; this.save();
+    if (!this.search.query) { this.draw(); return; }
+    this.nextMatch(1);
+  }
+  nextMatch(direction: number): void {
+    if (this.closed || this.hidden) return;
+    const match = this.search.next(this.screen.locator, direction);
+    if (match) this.goTo(match);
+    else this.notice(this.search.query ? 'No matches | / change query | c clear' : 'Press / to search');
+  }
+  clearSearch(): void { if (!this.closed) { this.search.setQuery(''); this.state.searchQuery = ''; this.save(); this.draw(); } }
+  async promptSearch(): Promise<void> { if (!this.closed && !this.busy) { this.resume(); await this.prompt('search'); } }
   get isClosed(): boolean { return this.closed; }
   private get hasFooter(): boolean { return this.viewport.rows >= 2 && this.viewport.columns >= 2; }
   private resizeScreen(dimensions: vscode.TerminalDimensions): void {
@@ -150,8 +209,12 @@ export class ReaderTerminal implements vscode.Pseudoterminal {
     else if (data === 'k') this.screen.move(-1);
     else if (data === ' ' || data === '\x06') this.screen.page(1);
     else if (data === '\x02') this.screen.page(-1);
-    else if (data === 'n') this.screen.nextChapter(1);
-    else if (data === 'p') this.screen.nextChapter(-1);
+    else if (data === 'n') { if (this.screen.chapter + 1 < this.screen.book.chapters.length) this.goTo({ chapter: this.screen.chapter + 1, offset: 0 }); return; }
+    else if (data === 'p') { if (this.screen.chapter > 0) this.goTo({ chapter: this.screen.chapter - 1, offset: 0 }); return; }
+    else if (data === 'u' || data === 'U') { this.travel(data === 'u' ? -1 : 1); return; }
+    else if (data === '[' || data === ']') { this.nextMatch(data === ']' ? 1 : -1); return; }
+    else if (data === 'c') { this.clearSearch(); return; }
+    else if (data === 'f') { void this.showFootnotes(); return; }
     else if (data === 'g') { void this.prompt('toc'); return; }
     else if (data === '/') { void this.prompt('search'); return; }
     else if (data === 'i') { void this.showImages(); return; }
@@ -164,18 +227,19 @@ export class ReaderTerminal implements vscode.Pseudoterminal {
     this.changed();
   }
   get snapshot() {
-    return { book: this.screen.book, position: this.screen.locator, bookmarks: structuredClone(this.state.bookmarks), hidden: this.hidden,
+    return { book: this.screen.book, position: this.screen.locator, bookmarks: structuredClone(this.state.bookmarks), hidden: this.hidden, canGoBack: this.history.canGoBack, canGoForward: this.history.canGoForward, search: this.search.status,
       progress: readingProgress(this.screen.book, this.screen.locator, this.screen.row, this.screen.rows, this.screen.lines.length) };
   }
   showProgress() {
     const snapshot = this.snapshot;
     vscode.window.setStatusBarMessage(progressLabel(snapshot.progress, snapshot.book), 7000);
-    return { position: snapshot.position, progress: snapshot.progress, bookmarks: snapshot.bookmarks };
+    return { position: snapshot.position, progress: snapshot.progress, bookmarks: snapshot.bookmarks, canGoBack: snapshot.canGoBack, canGoForward: snapshot.canGoForward, search: snapshot.search };
   }
   goTo(locator: Locator): void {
     if (this.closed || !Number.isSafeInteger(locator.chapter) || !Number.isSafeInteger(locator.offset)) return;
     this.hidden = false; this.pending = '';
-    this.screen.go(locator); this.changed(); this.save();
+    const from = this.screen.locator;
+    this.screen.go(locator); this.history.record(from, this.screen.locator); this.search.align(this.screen.locator); this.changed(); this.save();
   }
   goToLocation(input: string): void { this.goTo(parseLocation(this.screen.book, input)); }
   page(direction: number): void { if (!this.closed) { this.resume(); this.screen.page(direction); this.changed(); } }
@@ -265,7 +329,8 @@ export class ReaderTerminal implements vscode.Pseudoterminal {
       if (kind === 'help') {
         await vscode.window.showQuickPick([
           'j/k or arrows: move one line', 'Space / PageDown / PageUp: move one screen',
-          'n/p: next / previous chapter', 'g: table of contents', '/: search book (first 200 matches)',
+          'n/p: next / previous chapter', 'g: table of contents', 'u / U: jump back / forward',
+          '/: search book (up to 1000 matches); [ / ]: previous / next; c: clear highlights', 'f: footnotes; Ctrl+click an internal reference; u: return to reading',
           'b: save bookmark; B: list bookmarks', 's: show progress; l: go to page or percentage', 'Ctrl+click an image marker: open that illustration in an editor tab', 'i: choose an illustration with the keyboard', 'Escape: hide text; r: resume hidden text; q: close reader'
         ], { title: 'Reader keys' });
         return;
@@ -274,14 +339,14 @@ export class ReaderTerminal implements vscode.Pseudoterminal {
       if (kind === 'toc') items = this.screen.book.toc.map(item => ({ ...item, label: '  '.repeat(Math.min(item.depth, 8)) + safeText(item.title) }));
       else if (kind === 'bookmarks') items = this.state.bookmarks.map(item => ({ ...item, label: item.label, description: this.screen.book.chapters[item.chapter].title }));
       else {
-        const query = await vscode.window.showInputBox({ title: 'Search book', prompt: 'Literal text, case insensitive; up to 200 results', ignoreFocusOut: false });
-        if (query === undefined || !query.trim() || this.hidden || this.closed) return;
-        items = findMatches(this.screen.book, query).map(item => ({ ...item, description: this.screen.book.chapters[item.chapter].title }));
+        const query = await vscode.window.showInputBox({ title: 'Search book', value: this.search.query, prompt: 'Literal text, case insensitive; up to 1000 results. [ previous, ] next, c clear.', ignoreFocusOut: false, validateInput: value => value.length > 256 ? 'Use at most 256 characters.' : undefined });
+        if (query !== undefined && !this.hidden && !this.closed) this.startSearch(query);
+        return;
       }
       if (!items.length) { this.notice(kind === 'bookmarks' ? 'No bookmarks yet: b saves one' : 'No results'); return; }
       this.mode = 'picker'; this.draw();
-      const selected = await vscode.window.showQuickPick(items, { title: kind === 'toc' ? 'Contents' : kind === 'search' ? 'Search results' : 'Bookmarks', matchOnDescription: true });
-      if (selected && !this.closed && !this.hidden) { this.screen.go(selected); this.changed(); }
+      const selected = await vscode.window.showQuickPick(items, { title: kind === 'toc' ? 'Contents' : 'Bookmarks', matchOnDescription: true });
+      if (selected && !this.closed && !this.hidden) { this.goTo(selected); }
     } catch (error) {
       if (!this.closed) void vscode.window.showErrorMessage(`Reader: ${safeText(error instanceof Error ? error.message : String(error))}`);
     } finally { this.endInteraction(); }

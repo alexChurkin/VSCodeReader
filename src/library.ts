@@ -6,7 +6,7 @@ import type { ReadingProgress } from './progress';
 
 export interface RecentBook { uri: string; entry?: string; encoding?: 'utf-8' | 'windows-1251'; title?: string; progress?: string; imagePages?: boolean }
 export interface LibraryTarget { sessionId?: string; position?: Locator }
-export interface LibraryBook { id: string; title: string; hidden: boolean; progress: ReadingProgress; bookmarks: Bookmark[]; toc: TocItem[]; imagePages?: boolean }
+export interface LibraryBook { id: string; title: string; hidden: boolean; progress: ReadingProgress; bookmarks: Bookmark[]; toc: TocItem[]; imagePages?: boolean; canGoBack?: boolean; canGoForward?: boolean }
 export interface LibraryModel { active?: LibraryBook; open: LibraryBook[]; recent: RecentBook[] }
 export class LibraryItem extends vscode.TreeItem {
   children?: LibraryItem[];
@@ -53,6 +53,11 @@ export class ReaderLibrary implements vscode.TreeDataProvider<LibraryItem>, vsco
       const contents = active.toc.map((toc, index) => node(`${prefix}:toc:${index}`, '  '.repeat(Math.min(8, toc.depth)) + toc.title, 'list-tree', 'vscodeReader.goToBookmark', [{ ...target, position: { chapter: toc.chapter, offset: toc.offset } }]));
       const book = group(prefix, active.title, 'book', [
         progress,
+        ...(active.canGoBack ? [node(prefix + ':back', 'Back to previous passage', 'arrow-left', 'vscodeReader.goBack', [target])] : []),
+        ...(active.canGoForward ? [node(prefix + ':forward', 'Forward to next passage', 'arrow-right', 'vscodeReader.goForward', [target])] : []),
+        node(prefix + ':find', 'Find in book…', 'search', 'vscodeReader.find', [undefined, target]),
+        node(prefix + ':footnotes', 'Footnotes in chapter…', 'references', 'vscodeReader.showFootnotes', [target]),
+        node(prefix + ':layout', 'Reading layout…', 'layout', 'vscodeReader.readingLayout'),
         node(prefix + ':next', 'Next screen', 'arrow-down', 'vscodeReader.nextPage', [target]),
         node(prefix + ':previous', 'Previous screen', 'arrow-up', 'vscodeReader.previousPage', [target]),
         node(prefix + ':add', 'Add bookmark…', 'bookmark', 'vscodeReader.addBookmark', [undefined, target]),

@@ -1,13 +1,13 @@
 import { posix } from 'node:path';
 import { parseDocument } from 'htmlparser2';
-import { Marked } from 'marked';
+import { markdownHtml } from './markdown';
+import { fragment } from './footnotes';
 import { LIMITS } from './archive';
 import { type Book, type BookImage, type Chapter, safeText } from './book';
 import { decodeText, type TextEncoding } from './encoding';
 import { content, elements, renderNodes } from './xml';
 import { isRasterMediaType, validateImage, type ImageData } from './images';
 
-const markdown = new Marked({ gfm: true, async: false });
 export const isMarkup = (filename: string) => /\.(?:html?|md|markdown)$/i.test(filename);
 export interface MarkupDocument { book: Book; resources: Map<string, string> }
 export function localImagePath(href: string): string {
@@ -30,7 +30,7 @@ export function readMarkup(bytes: Uint8Array, filename: string, encoding: TextEn
   if (bytes.length > LIMITS.text) throw new Error('HTML/Markdown exceeds the 32 MiB document limit.');
   const md = /\.(?:md|markdown)$/i.test(filename);
   const source = decodeText(bytes, md ? encoding : htmlEncoding(bytes, encoding));
-  const html = md ? markdown.parse(source, { async: false }) : source;
+  const html = md ? markdownHtml(source) : source;
   const doc = parseDocument(html, { decodeEntities: true });
   const body = elements(doc, 'body')[0] ?? doc;
   const rendered = renderNodes(body.children, false, true);
@@ -88,6 +88,17 @@ export function readMarkup(bytes: Uint8Array, filename: string, encoding: TextEn
       if (end > offset) (chapters[index].imageLinks ??= []).push({ imageId: image.id, offset, length: end - offset });
     }
   }
+  rendered.links.forEach((ref, index) => {
+    const id = fragment(ref.href);
+    if (!id || !Object.hasOwn(rendered.anchors, id)) return;
+    const target = locate(rendered.anchors[id]);
+    const source = locate(ref.offset);
+    for (let chapter = source.chapter; chapter < chapters.length && starts[chapter] < ref.offset + ref.length; chapter++) {
+      const offset = Math.max(0, ref.offset - starts[chapter]);
+      const end = Math.min(chapters[chapter].text.length, ref.offset + ref.length - starts[chapter]);
+      if (end > offset) (chapters[chapter].footnotes ??= []).push({ id: `reference-${index}`, offset, length: end - offset, label: ref.label, target });
+    }
+  });
   return { book: { title: safeText(title), author: safeText(author), chapters, toc, images }, resources };
 }
 export function embeddedImage(href: string): ImageData {

@@ -37,6 +37,7 @@ export function xml(source: string) {
   return parseDocument(source, { xmlMode: true, decodeEntities: true });
 }
 
+export interface LinkReference { href: string; offset: number; length: number; label: string; footnote: boolean }
 export interface ImageReference { href: string; label: string; offset: number; length: number }
 export function chapterText(source: string) {
   const doc = parseDocument(source, { decodeEntities: true });
@@ -44,13 +45,15 @@ export function chapterText(source: string) {
   return renderNodes(body.children);
 }
 export interface HeadingReference { title: string; level: number; offset: number }
-export function renderNodes(nodes: AnyNode[], fb2 = false, markup = false): { text: string; anchors: Record<string, number>; images: ImageReference[]; headings: HeadingReference[] } {
+export function renderNodes(nodes: AnyNode[], fb2 = false, markup = false): { text: string; anchors: Record<string, number>; images: ImageReference[]; links: LinkReference[]; headings: HeadingReference[] } {
   const ignored = new Set(['script', 'style', 'head', 'iframe', 'object', 'embed', 'form', 'svg', 'audio', 'video']);
   const blocks = new Set([...(fb2 ? ['title', 'subtitle', 'epigraph', 'annotation', 'poem', 'stanza', 'v', 'cite', 'text-author'] : []), 'p', 'div', 'section', 'article', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'li', 'blockquote', 'pre', 'tr', 'dt', 'dd']);
   let output = '';
   let imageSerial = 0;
   const anchors: Record<string, number> = Object.create(null);
   const images: ImageReference[] = [];
+  const links: LinkReference[] = [];
+  const linkStarts = new Map<AnyNode, Omit<LinkReference, 'length'>>();
   const headings: HeadingReference[] = [];
   const listCounters = new Map<AnyNode, number>();
   const boundary = () => { if (output && !output.endsWith('\n')) output += '\n\n'; };
@@ -79,6 +82,8 @@ export function renderNodes(nodes: AnyNode[], fb2 = false, markup = false): { te
     }
     if ((markup && ['template', 'noscript', 'button', 'select', 'textarea', 'input'].includes(tag)) || ignored.has(tag)) continue;
     if (end) {
+      const link = linkStarts.get(node);
+      if (link) links.push({ ...link, length: output.length - link.offset });
       if (markup && (tag === 'td' || tag === 'th')) output += ' | ';
       if (blocks.has(tag)) boundary(); continue;
     }
@@ -93,7 +98,9 @@ export function renderNodes(nodes: AnyNode[], fb2 = false, markup = false): { te
       output += checkbox && isElement(checkbox) ? (checkbox.attribs.checked !== undefined ? '[x] ' : '[ ] ') : ordered ? `${count}. ` : '- ';
     }
     if (markup && tag === 'hr') { boundary(); output += '---\n\n'; }
-    if (node.attribs.id) anchors[node.attribs.id] = output.length;
+    if (node.attribs.id || (tag === 'a' && node.attribs.name)) anchors[node.attribs.id || node.attribs.name] = output.length;
+    const linkHref = tag === 'a' ? node.attribs.href ?? Object.entries(node.attribs).find(([key]) => key.endsWith(':href'))?.[1] : undefined;
+    if (linkHref) linkStarts.set(node, { href: linkHref, offset: output.length, label: content(node), footnote: node.attribs.type === 'note' || (node.attribs['epub:type'] ?? '').split(/\s+/).includes('noteref') || node.attribs.role === 'doc-noteref' });
     if (tag === 'br' || (fb2 && tag === 'empty-line')) output += '\n';
     else if (tag === 'img' || tag === 'image') {
       const href = node.attribs.src ?? node.attribs['xlink:href'] ?? node.attribs.href ?? Object.entries(node.attribs).find(([key]) => key.endsWith(':href'))?.[1];
@@ -108,5 +115,5 @@ export function renderNodes(nodes: AnyNode[], fb2 = false, markup = false): { te
     }
   }
   // Keep anchor offsets valid: no global trim/collapse after collecting them.
-  return { text: output || '[empty chapter]', anchors, images, headings };
+  return { text: output || '[empty chapter]', anchors, images, links, headings };
 }

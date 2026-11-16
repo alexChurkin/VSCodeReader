@@ -7,7 +7,8 @@ import { zip, fb2, png } from './fixtures';
 import { ReaderLibrary, type LibraryBook } from '../src/library';
 import type { ReadingProgress } from '../src/progress';
 import { ReaderTerminal } from '../src/terminal';
-import { ReaderImageLinks } from '../src/terminal-links';
+import { ReaderLinks } from '../src/terminal-links';
+import { readMarkup } from '../src/markup';
 import { readFb2 } from '../src/fb2';
 import { previewImage } from '../src/image-preview';
 import { validateImage } from '../src/images';
@@ -28,7 +29,7 @@ export async function run(): Promise<void> {
   const persistenceDirectory = vscode.Uri.joinPath(extension.extensionUri, '.vscode-test', 'reader-fixtures');
   const persistenceUri = vscode.Uri.joinPath(persistenceDirectory, 'persistence.txt');
   const expectedUri = vscode.Uri.joinPath(persistenceDirectory, 'expected-position.json');
-  type Status = { position: { chapter: number; offset: number }; bookmarks: Array<{ chapter: number; offset: number; label: string }>; progress: ReadingProgress };
+  type Status = { position: { chapter: number; offset: number }; bookmarks: Array<{ chapter: number; offset: number; label: string }>; progress: ReadingProgress; search: { query: string; count: number; index: number }; canGoBack: boolean; canGoForward: boolean };
   if (process.env.READER_TEST_PASS === 'restore') {
     const expected = JSON.parse(Buffer.from(await vscode.workspace.fs.readFile(expectedUri)).toString()) as Status;
     await Promise.race([vscode.commands.executeCommand('vscodeReader.resume'), pause(10_000).then(() => { throw new Error('Resume did not restore the saved book.'); })]);
@@ -37,6 +38,8 @@ export async function run(): Promise<void> {
     assert.deepEqual(actual.position, expected.position, 'Exact position should survive a full VS Code restart');
     assert.deepEqual(actual.bookmarks, expected.bookmarks, 'Named bookmarks should survive a full VS Code restart');
     assert.equal(actual.progress.location, expected.progress.location);
+    assert.equal(actual.search.query, expected.search.query);
+    assert.equal(actual.search.count, expected.search.count);
     console.log('Persistence passed after a full VS Code restart: position and named bookmarks restored.');
     return;
   }
@@ -114,7 +117,7 @@ export async function run(): Promise<void> {
   try {
     await pause(200);
     first.setDimensions({ columns: 120, rows: 40 }); second.setDimensions({ columns: 120, rows: 40 });
-    const provider = new ReaderImageLinks(candidate => candidate === firstTerminal ? first : candidate === secondTerminal ? second : undefined);
+    const provider = new ReaderLinks(candidate => candidate === firstTerminal ? first : candidate === secondTerminal ? second : undefined);
     const line = '[log] ' + first.screen.lines.find(item => item.text.includes('[image #'))!.text;
     const query = { terminal: firstTerminal, line };
     const links = provider.provideTerminalLinks(query, linkCancellation.token);
@@ -148,6 +151,37 @@ export async function run(): Promise<void> {
     assert.deepEqual(provider.provideTerminalLinks({ terminal: secondTerminal, line }, cancellation.token), []);
     cancellation.dispose();
   } finally { linkCancellation.dispose(); first.close(); second.close(); firstTerminal.dispose(); secondTerminal.dispose(); }
+  const toolsBook = readMarkup(Buffer.from('<h1>Read</h1><p>Alpha text, alpha again. <a href="#note">[1]</a></p><h2 id="note">Footnote</h2><p>Alpha note.</p>'), 'tools.html').book;
+  const tools = new ReaderTerminal(toolsBook, '> ', restoreState(undefined, toolsBook), () => {});
+  let toolsOutput = '';
+  const toolsOutputSubscription = tools.onDidWrite(frame => { toolsOutput = frame; });
+  const toolsTerminal = vscode.window.createTerminal({ name: 'reading-tools', pty: tools });
+  const toolsCancellation = new vscode.CancellationTokenSource();
+  try {
+    toolsTerminal.show(); await until(() => toolsOutput.includes('Alpha text'));
+    tools.setDimensions({ columns: 120, rows: 16 });
+    const original = tools.snapshot.position;
+    tools.startSearch('alpha');
+    assert.equal(tools.snapshot.search.count, 3); assert.match(toolsOutput, /\x1b\[7mAlpha/);
+    const firstMatch = tools.snapshot.position;
+    tools.handleInput(']'); const nextMatch = tools.snapshot.position;
+    assert.ok(nextMatch.offset > firstMatch.offset);
+    tools.handleInput('['); assert.deepEqual(tools.snapshot.position, firstMatch);
+    tools.configureLayout({ maxTextWidth: 40, horizontalPadding: 2, centerText: true });
+    assert.deepEqual(tools.snapshot.position, firstMatch);
+    const provider = new ReaderLinks(candidate => candidate === toolsTerminal ? tools : undefined);
+    const line = toolsOutput.replace(/\x1b\[[0-9;]*[A-Za-z]/g, '').split('\r\n').find(line => line.includes('[1]'))!;
+    const note = provider.provideTerminalLinks({ terminal: toolsTerminal, line }, toolsCancellation.token).find(link => link.kind === 'footnote');
+    assert.ok(note);
+    await provider.handleTerminalLink(note); assert.equal(tools.snapshot.position.chapter, 1);
+    tools.handleInput('u'); assert.deepEqual(tools.snapshot.position, firstMatch);
+    tools.handleInput('U'); assert.equal(tools.snapshot.position.chapter, 1);
+    tools.handleInput('u');
+    tools.handleInput('c'); assert.equal(tools.snapshot.search.query, ''); assert.doesNotMatch(toolsOutput, /\x1b\[7m/);
+    tools.handleInput('f'); await until(() => tools.snapshot.position.chapter === 1);
+    tools.handleInput('u'); assert.deepEqual(tools.snapshot.position, firstMatch);
+    tools.goTo(original); assert.deepEqual(tools.snapshot.position, original);
+  } finally { tools.close(); toolsTerminal.dispose(); toolsOutputSubscription.dispose(); toolsCancellation.dispose(); }
   // Exercise real extension activation, worker, terminal creation, and resume command.
   const sample = vscode.Uri.joinPath(extension.extensionUri, 'samples', 'alice-in-wonderland.epub');
   const previous = new Set(vscode.window.terminals);
@@ -212,7 +246,20 @@ export async function run(): Promise<void> {
   }
   await vscode.workspace.fs.writeFile(persistenceUri, Buffer.from(Array.from({ length: 800 }, (_, i) => `Paragraph ${i}: persistent reading position and bookmarks.`).join('\n')));
   await vscode.commands.executeCommand('vscodeReader.openBook', persistenceUri);
+  await vscode.commands.executeCommand('vscodeReader.find', 'Paragraph');
   const middle = await vscode.commands.executeCommand<Status>('vscodeReader.goToLocation', '50%');
+  const layoutConfig = vscode.workspace.getConfiguration('vscodeReader');
+  await layoutConfig.update('maxTextWidth', 20, vscode.ConfigurationTarget.Global);
+  let narrowed: Status | undefined;
+  for (let attempt = 0; attempt < 100; attempt++) {
+    narrowed = await vscode.commands.executeCommand<Status>('vscodeReader.showProgress');
+    if (narrowed.progress.screens > middle.progress.screens) break;
+    await pause(50);
+  }
+  assert.ok(narrowed && narrowed.progress.screens > middle.progress.screens);
+  assert.deepEqual(narrowed.position, middle.position);
+  assert.equal(narrowed.progress.location, middle.progress.location);
+  await layoutConfig.update('maxTextWidth', undefined, vscode.ConfigurationTarget.Global);
   const savedBookmark = await vscode.commands.executeCommand('vscodeReader.addBookmark', 'Middle checkpoint');
   assert.ok(savedBookmark);
   await vscode.commands.executeCommand('vscodeReader.renameBookmark', { position: middle.position }, 'Renamed checkpoint');

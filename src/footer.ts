@@ -3,7 +3,7 @@ import stringWidth from 'string-width';
 import { safeText } from './book';
 
 export type HintMode = 'reading' | 'hidden' | 'picker' | 'search' | 'location' | 'name' | 'image-loading';
-export interface HintState { mode: HintMode; columns: number; images?: boolean; bookmarks?: boolean; end?: boolean; message?: string; progress?: PageProgress }
+export interface HintState { mode: HintMode; columns: number; images?: boolean; bookmarks?: boolean; end?: boolean; history?: boolean; footnotes?: boolean; search?: { query: string; index: number; count: number; truncated: boolean }; message?: string; progress?: PageProgress }
 const segments = new Intl.Segmenter(undefined, { granularity: 'grapheme' });
 export function fitCells(text: string, width: number): string {
   const clean = safeText(text).replace(/\n/g, ' ');
@@ -32,6 +32,9 @@ export function footerText(state: HintState): string {
     const image = state.images ? ' | Ctrl+click image | i images' : '';
     const bookmarks = state.bookmarks ? ' | B bookmarks' : '';
     const start = state.end ? 'End of book | PgUp back' : 'Space/PgDn next | PgUp back';
+    if (state.search?.query) variants.push(`Find ${state.search.index}/${state.search.count}${state.search.truncated ? '+' : ''} | [ prev | ] next | c clear | u back | ? help`, `Find ${state.search.index}/${state.search.count}${state.search.truncated ? '+' : ''} | [ / ] matches | c clear`, `[ / ] matches | c clear`);
+    if (state.history) variants.push('u back | U forward | / find | ? help');
+    if (state.footnotes) variants.push('Ctrl+click reference | f footnotes | u back | ? help');
     variants.push(
       `${start} | j/k scroll | n/p chapter | g contents | / search | b bookmark${bookmarks}${image} | l page | s progress | ? help | Esc hide | q close`,
       `${state.end ? 'End | PgUp back' : 'Space/PgUp page'} | g toc | / find | b save${state.bookmarks ? ' | B list' : ''}${state.images ? ' | i img' : ''} | ? help | Esc hide`,

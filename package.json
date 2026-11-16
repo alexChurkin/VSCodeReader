@@ -105,6 +105,46 @@
         "command": "vscodeReader.deleteBookmark",
         "title": "VSCodeReader: Delete Bookmark",
         "icon": "$(trash)"
+      },
+      {
+        "command": "vscodeReader.goBack",
+        "title": "VSCodeReader: Back to Previous Passage",
+        "icon": "$(arrow-left)"
+      },
+      {
+        "command": "vscodeReader.goForward",
+        "title": "VSCodeReader: Forward to Next Passage",
+        "icon": "$(arrow-right)"
+      },
+      {
+        "command": "vscodeReader.find",
+        "title": "VSCodeReader: Find in Book",
+        "icon": "$(search)"
+      },
+      {
+        "command": "vscodeReader.nextMatch",
+        "title": "VSCodeReader: Next Search Match",
+        "icon": "$(arrow-down)"
+      },
+      {
+        "command": "vscodeReader.previousMatch",
+        "title": "VSCodeReader: Previous Search Match",
+        "icon": "$(arrow-up)"
+      },
+      {
+        "command": "vscodeReader.clearSearch",
+        "title": "VSCodeReader: Clear Search Highlights",
+        "icon": "$(clear-all)"
+      },
+      {
+        "command": "vscodeReader.showFootnotes",
+        "title": "VSCodeReader: Footnotes / Internal References",
+        "icon": "$(references)"
+      },
+      {
+        "command": "vscodeReader.readingLayout",
+        "title": "VSCodeReader: Reading Layout",
+        "icon": "$(layout)"
       }
     ],
     "menus": {
@@ -172,6 +212,25 @@
           ],
           "default": "utf-8",
           "description": "Encoding for TXT, HTML and Markdown documents without a BOM or HTML charset declaration. Applies to new reading sessions."
+        },
+        "vscodeReader.maxTextWidth": {
+          "type": "integer",
+          "default": 0,
+          "minimum": 0,
+          "maximum": 300,
+          "description": "Maximum text column width in terminal cells, excluding the prefix and margins. 0 uses the terminal width. Applies immediately."
+        },
+        "vscodeReader.horizontalPadding": {
+          "type": "integer",
+          "default": 0,
+          "minimum": 0,
+          "maximum": 40,
+          "description": "Minimum margin on each side of the reading text, in terminal cells. Automatically shrinks in narrow terminals. Applies immediately."
+        },
+        "vscodeReader.centerText": {
+          "type": "boolean",
+          "default": false,
+          "description": "Center the reading column when maxTextWidth is narrower than the terminal. Applies immediately."
         }
       }
     },

@@ -2,6 +2,8 @@ Read EPUB, FB2/FB2.ZIP/FBZ, TXT, CBZ, HTML and Markdown in a VS Code terminal ta
 
 - Book icon and Library sidebar, contents and recent books.
 - Saved reading position, named bookmarks and persistent page/progress counter.
+- Back/forward jump history, persistent search queries with highlighting and next/previous matches.
+- Footnotes/internal reference navigation with return; adjustable column width, margins and centering.
 - Ctrl+click image markers to open the exact illustration in a separate editor tab.
 - Dim contextual keyboard hints; illustrations open in separate editor tabs.
 

@@ -18,7 +18,7 @@ The current **0.1.0** build supports EPUB, FictionBook, plain text, CBZ comics, 
 | Markdown (`.md`, `.markdown`) | ATX/Setext headings, GFM lists/tasks/tables, fenced code and images |
 | Comic Book ZIP (`.cbz`) | Raster pages in natural filename order (`page2` before `page10`); open the current page with `i` |
 
-Ordinary `.zip` files are not treated as books. PDF and MOBI/AZW3 are not supported. EPUB fixed layout, DRM, multimedia and inline footnote navigation remain outside this version.
+Ordinary `.zip` files are not treated as books. PDF and MOBI/AZW3 are not supported. EPUB fixed layout, DRM and multimedia remain outside this version.
 
 ## Get started
 
@@ -48,7 +48,11 @@ With focus in the reader terminal:
 | Space / PageDown, PageUp | Next / previous screen, crossing chapters |
 | `n` / `p` | Next / previous chapter or comic page |
 | `g` | Table of contents |
-| `/` | Search the book, up to 200 matches |
+| `/` | Search the book; reuse the last query, up to 1,000 matches |
+| `[` / `]` | Previous / next search match, wrapping around the book |
+| `c` | Clear the query and search highlighting |
+| `u` / `U` | Back / forward through passage jumps |
+| `f`, Ctrl+click an internal reference | Follow a footnote or internal anchor; `u` returns |
 | `b` | Save a quick bookmark (with confirmation) |
 | `B` | Go to a bookmark |
 | `s` | Show chapter, screen, page and percentage |
@@ -72,6 +76,14 @@ Press `b` for a quick bookmark, or click **Add bookmark…** in the sidebar to g
 
 Position and bookmark data stay local. Changing the source file starts a new reading position. Book contents are not sent over the network.
 
+## Search, jump history and footnotes
+
+Press `/` to search literal text without case sensitivity. The current match uses inverse video; other matches are underlined. `[` and `]` move between matches and wrap at the ends. The footer shows the match count and keys when space allows; the page counter always takes priority. Queries are limited to 256 characters and the first 1,000 matches (`+` indicates truncation). The last query is stored locally for each book and restored after restart. `c` clears it and removes highlighting.
+
+`u` returns to the exact passage before a jump; `U` moves forward again. Contents, bookmarks, page/percentage jumps, chapter changes, search matches and footnotes participate in the history. Ordinary scrolling and screen paging keep the original return point. A new jump after going back clears the forward branch. Each open book has its own history of up to 100 jumps; history lasts for that reading session. **Back**, **Forward** and **Find in book…** also appear in Library when applicable, with equivalent commands in the Command Palette.
+
+Ctrl+click a footnote/internal reference or press `f` to choose one from the current screen (falling back to the chapter). The reader jumps to its target; `u` returns to reading. EPUB noterefs can reach package documents outside the main spine; non-linear spine documents are appended after the main text. FB2 links to note sections and HTML/Markdown `#anchor` links are supported. Markdown also accepts `Text[^id]` with a definition `[^id]: Note text` and indented continuation lines. Undefined anchors and external links stay inert. Book footnotes are part of the source text; personal notes and annotations are not implemented.
+
 ## Images and comics
 
 The terminal shows numbered image markers such as `[image #1: Rabbit]`. **Ctrl+click a marker** to open that exact illustration in a separate editor tab (Cmd+click on macOS, or the modifier shown by VS Code on hover). Links belong to their reading terminal and are invalidated when the page changes or the reader is hidden/closed. Long markers can wrap; use `i` if a fragment is ambiguous on a very narrow terminal. Press `i` to open an illustration in a separate editor tab. When the current chapter has one image, it opens directly; otherwise a picker lists the book's images with current-chapter images first. **VSCodeReader: Open Image** lists all available images, including covers. The terminal keeps keyboard focus so you can continue navigating.
@@ -86,10 +98,13 @@ For CBZ, use `n` / `p` to select a page and Ctrl+click its image marker or press
 
 - Font, font size and colors: use normal VS Code terminal settings.
 - `vscodeReader.terminalName`: tab name template; defaults to `{title}`. `{filename}` is also supported. The literal `output` resolves to the book title.
+- `vscodeReader.maxTextWidth`: maximum text width in terminal cells, excluding the prefix and margins; `0` (default) uses the available width.
+- `vscodeReader.horizontalPadding`: minimum left/right margins in terminal cells, default `0`; margins shrink automatically in narrow terminals.
+- `vscodeReader.centerText`: center a limited-width text column, default `false`.
 - `vscodeReader.linePrefix`: optional prefix such as `[text] `; empty by default.
 - `vscodeReader.textEncoding`: `utf-8` (default) or `windows-1251` for TXT, HTML and Markdown without a BOM or HTML charset declaration. BOM takes precedence; HTML also honors its meta charset and FB2 follows its XML encoding declaration.
 
-Reader settings apply to new sessions. Close and reopen a book to change its text encoding. The reading area shows the text and a compact hint bar; book details and progress are in Library.
+**VSCodeReader: Reading Layout** offers full width and centered 80/100-column presets, or opens the custom settings. Width, margins and centering apply immediately to open books without changing the saved text anchor or page number. Other reader settings apply to new sessions. Close and reopen a book to change its text encoding. The reading area shows the text and a compact hint bar; book details and progress are in Library.
 
 ## Development and checks
 
@@ -107,4 +122,4 @@ The host test runs VS Code twice to verify that positions and named bookmarks su
 
 Parsing and image extraction run in cancellable workers. Limits: 100 MiB input, 300 MiB declared archive contents, 10,000 archive entries, 10 MiB per extracted resource, and 32 MiB of extracted text. Uncompressed FB2/TXT/HTML/Markdown documents are limited to 32 MiB; a compressed FB2 entry is limited to 10 MiB.
 
-Book scripts and terminal control sequences are not executed. HTML is converted to text; CSS, forms and dynamic page content are not rendered. Markdown links retain their labels, without interactive navigation. Rich HTML layout, lazy chapter loading, interactive footnotes and expanded accessibility are still planned. The project's own license has not been selected (`UNLICENSED`); dependency notices are included in the VSIX.
+Book scripts and terminal control sequences are not executed. HTML is converted to text; CSS, forms and dynamic page content are not rendered. External Markdown links retain their labels and stay inert. Rich HTML layout, lazy chapter loading and expanded accessibility are still planned. The project's own license has not been selected (`UNLICENSED`); dependency notices are included in the VSIX.
