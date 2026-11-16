@@ -14,3 +14,4 @@
 - Personal notes/annotations are deferred. Preserve source-book footnotes, per-session jump history, per-book saved search queries, and live reading layout settings without moving text anchors.
 - Preserve wheel/trackpad scrolling and terminal selection mode. Clean copying must keep source paragraphs/indentation and remove parser-owned image markers without deleting literal book text.
 - Keep installed Git revision metadata in the extension and VSIX, distinguish dirty development builds, and expose the latest release link in Library. Cache layout work with bounded retention; preserve graphemes and text anchors.
+- Preserve semantic heading/emphasis styles and adaptive table layouts in EPUB/HTML/Markdown. Keep ANSI escapes in the renderer, maintain source mappings for table cells, and never commit private debug books; use synthetic fixtures and optional READER_DEBUG_EPUB tests.

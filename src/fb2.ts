@@ -30,7 +30,7 @@ export function readFb2(bytes: Uint8Array): Book {
     const rendered = renderNodes(nodes, true);
     const index = chapters.length;
     references.push(rendered.links);
-    chapters.push({ id: `body-${index}`, title: safeText(label), text: rendered.text, anchors: rendered.anchors, imageMarkers: rendered.markers, imageLinks: [] });
+    chapters.push({ id: `body-${index}`, title: safeText(label), text: rendered.text, anchors: rendered.anchors, styles: rendered.styles, tables: rendered.tables, imageMarkers: rendered.markers, imageLinks: [] });
     if (!sections.length) toc.push({ title: label, chapter: index, offset: 0, depth: 0 });
     for (const section of sections) {
       let depth = 0, parent = section.parent;

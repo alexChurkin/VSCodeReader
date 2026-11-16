@@ -170,8 +170,10 @@ export class ReaderTerminal implements vscode.Pseudoterminal {
   async copyVisibleText(): Promise<void> {
     if (this.closed || this.hidden || this.busy) return;
     const chapter = this.screen.book.chapters[this.screen.chapter];
-    const start = this.screen.lines[this.screen.row]?.offset ?? 0;
-    const end = this.screen.lines[this.screen.row + this.screen.rows]?.offset ?? chapter.text.length;
+    const firstLine = this.screen.lines[this.screen.row];
+    const start = firstLine?.sourceStart ?? firstLine?.offset ?? 0;
+    const lastLine = this.screen.lines[Math.min(this.screen.lines.length - 1, this.screen.row + this.screen.rows - 1)];
+    const end = lastLine?.sourceEnd ?? this.screen.lines[this.screen.row + this.screen.rows]?.offset ?? chapter.text.length;
     const text = this.screen.book.imagePages ? '' : cleanPassage(chapter, start, end);
     if (!text.trim() || text === '[empty chapter]') { this.notice('No book text on this screen'); return; }
     await vscode.env.clipboard.writeText(text);

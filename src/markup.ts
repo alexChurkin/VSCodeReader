@@ -1,6 +1,7 @@
 import { posix } from 'node:path';
 import { parseDocument } from 'htmlparser2';
 import { markdownHtml } from './markdown';
+import { cssRules } from './presentation';
 import { fragment } from './footnotes';
 import { LIMITS } from './archive';
 import { type Book, type BookImage, type Chapter, safeText } from './book';
@@ -33,7 +34,7 @@ export function readMarkup(bytes: Uint8Array, filename: string, encoding: TextEn
   const html = md ? markdownHtml(source) : source;
   const doc = parseDocument(html, { decodeEntities: true });
   const body = elements(doc, 'body')[0] ?? doc;
-  const rendered = renderNodes(body.children, false, true);
+  const rendered = renderNodes(body.children, false, true, elements(doc, 'style').flatMap(node => cssRules(content(node))).slice(0, 5000).map((rule, order) => ({ ...rule, order })));
   if (rendered.text === '[empty chapter]' || !rendered.text.trim()) throw new Error('Document has no readable text.');
   const titleNode = elements(doc, 'title')[0];
   const title = (titleNode ? content(titleNode) : rendered.headings[0]?.title) || safeText(posix.basename(filename));
@@ -53,11 +54,19 @@ export function readMarkup(bytes: Uint8Array, filename: string, encoding: TextEn
       const limit = Math.min(end, start + 64_000);
       let stop = limit < end ? rendered.text.lastIndexOf('\n', limit) + 1 : limit;
       if (stop <= start) stop = limit;
+      const spanningTable = rendered.tables.find(table => table.offset < stop && table.offset + table.length > stop);
+      if (spanningTable) stop = Math.min(end, spanningTable.offset + spanningTable.length);
       if (stop < end && /[\ud800-\udbff]/.test(rendered.text[stop - 1])) stop--;
       const anchors: Record<string, number> = Object.create(null);
       for (const [anchor, offset] of Object.entries(rendered.anchors)) if (offset >= start && offset < stop) anchors[anchor] = offset - start;
       starts.push(start);
-      chapters.push({ id: `section-${chapters.length}`, title: part ? `${label} (${part + 1})` : label, text: rendered.text.slice(start, stop), anchors });
+      chapters.push({ id: `section-${chapters.length}`, title: part ? `${label} (${part + 1})` : label, text: rendered.text.slice(start, stop), anchors,
+        styles: rendered.styles.flatMap(style => {
+          const offset = Math.max(style.offset, start), finish = Math.min(style.offset + style.length, stop);
+          return finish > offset ? [{ ...style, offset: offset - start, length: finish - offset }] : [];
+        }),
+        tables: rendered.tables.filter(table => table.offset >= start && table.offset + table.length <= stop).map(table => ({ ...table, offset: table.offset - start, caption: table.caption ? { ...table.caption, offset: table.caption.offset - start } : undefined, rows: table.rows.map(row => ({ ...row, offset: row.offset - start, end: row.end - start, cells: row.cells.map(cell => ({ ...cell, offset: cell.offset - start })) })) })),
+      });
       start = stop; part++;
     }
   }

@@ -10,12 +10,12 @@ The current **0.1.0** build supports EPUB, FictionBook, plain text, CBZ comics, 
 
 | Format | Support |
 | --- | --- |
-| EPUB 2 / EPUB 3 (`.epub`) | Reflowable text, spine order, nav/NCX table of contents, embedded raster images |
+| EPUB 2 / EPUB 3 (`.epub`) | Styled headings and emphasis, lists, adaptive tables, spine order, nav/NCX contents and embedded raster images |
 | FictionBook 2 (`.fb2`) | Metadata, nested sections, poems, notes as sections, embedded base64 images; XML-declared encodings including Windows-1251 |
 | FB2.ZIP / FBZ (`.fb2.zip`, `.fbz`) | One or multiple FB2 books; choose an entry when an archive contains several books |
 | Plain text (`.txt`) | UTF-8, UTF-16 BOM and configurable Windows-1251; long files split into navigable parts |
-| HTML (`.html`, `.htm`) | Headings as chapters, document title/author, text, lists, code blocks and local or base64 images |
-| Markdown (`.md`, `.markdown`) | ATX/Setext headings, GFM lists/tasks/tables, fenced code and images |
+| HTML (`.html`, `.htm`) | Styled headings as chapters, emphasis, lists, adaptive tables, code blocks and local or base64 images |
+| Markdown (`.md`, `.markdown`) | Styled ATX/Setext headings, emphasis, GFM lists/tasks/adaptive tables, fenced code and images |
 | Comic Book ZIP (`.cbz`) | Raster pages in natural filename order (`page2` before `page10`); open the current page with `i` |
 
 Ordinary `.zip` files are not treated as books. PDF and MOBI/AZW3 are not supported. EPUB fixed layout, DRM and multimedia remain outside this version.
@@ -80,6 +80,14 @@ Press `b` for a quick bookmark, or click **Add bookmark…** in the sidebar to g
 
 Position and bookmark data stay local. Changing the source file starts a new reading position. Book contents are not sent over the network.
 
+## Formatting and tables
+
+The terminal retains document structure: heading levels have increasing indentation and bold/underlined text; bold, italic, underline and strike-through spans are preserved. Lists have visible bullets/numbers, nested indentation and ordered-list starts. Quotes have a visible prefix; preformatted/code blocks retain whitespace.
+
+EPUB loads local linked stylesheets and inline styles. The supported text-only CSS subset includes tag/class/ID selectors, descendant and child selectors, inheritance, inline declarations, `!important`, font weight/style/size, underline/strike-through, white-space and hidden text. Variable-font `wght`, `slnt` and `ital` settings are mapped to terminal emphasis. Publisher paragraph classes such as `Heading-2` and bold enlarged paragraphs are recognized as headings, including InDesign-style exports. Stylesheets are capped at 1 MiB each and 5,000 combined rules per document. Remote styles/imports and font files are not loaded; fonts, colors and the terminal theme remain under VS Code's control.
+
+Tables use bounded column grids with wrapped cell contents. When columns would become too narrow, each row switches to a vertical card with column labels. Captions, empty cells and merged-cell column positions are retained. Grid borders and card labels are display elements, with source mappings for search, image/internal links and reading anchors. Resizing changes layout without changing text page numbers or the exact source position. This is a terminal representation rather than browser CSS layout; nested tables are flattened inside their outer cells.
+
 ## Mouse, selection and copying
 
 The wheel and touchpad scroll the book itself and save its position. `v` temporarily disables mouse reporting and freezes the text so a drag selection is not erased by a redraw; press `v` to resume. Escape still hides the text and `q` closes the reader. A terminal resize ends selection mode. Shift+drag also uses VS Code's normal terminal selection. Copy a terminal selection with your platform's terminal shortcut (for example Ctrl+Shift+C on Linux).
@@ -132,6 +140,8 @@ npm run check        # lint, strict typecheck, unit tests, extension and parser 
 npm run test:host    # integration checks in VS Code 1.95.3
 npm run package      # VSIX without samples, tests or node_modules
 npm run benchmark    # cold wrapping, 1,000 cached jumps and 100 redraws
+# Optional local regression against a private debug EPUB:
+READER_DEBUG_EPUB=/path/to/book.epub node --import tsx test/formatting.test.ts
 ```
 
 The project uses TypeScript and the VS Code API, with Node.js scripts and esbuild for bundling. ESLint uses the recommended JavaScript/TypeScript rules plus type-aware checks for unhandled promises, async callbacks and invalid `await`. TypeScript also checks missing return paths and switch fallthrough. `npm run check` and the VS Code host tests must pass in GitHub Actions before the release is updated. The ESLint editor extension is recommended in this workspace. TypeScript 6 is pinned to match the supported typescript-eslint peer range.
@@ -142,4 +152,4 @@ EPUB XHTML is validated and parsed once per document. Chapters are wrapped only 
 
 Parsing and image extraction run in cancellable workers. Limits: 100 MiB input, 300 MiB declared archive contents, 10,000 archive entries, 10 MiB per extracted resource, and 32 MiB of extracted text. Uncompressed FB2/TXT/HTML/Markdown documents are limited to 32 MiB; a compressed FB2 entry is limited to 10 MiB.
 
-Book scripts and terminal control sequences are not executed. HTML is converted to text; CSS, forms and dynamic page content are not rendered. External Markdown links retain their labels and stay inert. Rich HTML layout, lazy chapter loading and expanded accessibility are still planned. The project's own license has not been selected (`UNLICENSED`); dependency notices are included in the VSIX.
+Book scripts and terminal control sequences are not executed. HTML is converted to structured text with terminal style spans and table metadata; forms and dynamic page content are not rendered. External Markdown links retain their labels and stay inert. Full browser/CSS layout, lazy chapter loading and expanded accessibility are still planned. The project's own license has not been selected (`UNLICENSED`); dependency notices are included in the VSIX.

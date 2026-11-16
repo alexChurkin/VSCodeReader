@@ -1,84 +1,14 @@
 import stringWidth from 'string-width';
-import { safeText, type Book, type Locator } from './book';
+import { safeText, type Book, type Locator, type StyleSpan } from './book';
 
 export interface ReadingLayout { maxTextWidth: number; horizontalPadding: number; centerText: boolean }
 export interface Highlight { offset: number; length: number; active?: boolean }
 export interface ImageLinkRange { startIndex: number; length: number; imageId: string }
-export interface Line { text: string; offset: number }
+import type { Line } from './wrap';
+import { layoutChapter } from './table-layout';
+export { wrap } from './wrap';
+export type { Line } from './wrap';
 const segmenter = new Intl.Segmenter(undefined, { granularity: 'grapheme' });
-
-function* graphemes(text: string) {
-  if (/^[\x20-\x7e]*$/.test(text)) {
-    for (let index = 0; index < text.length; index++) yield { segment: text[index], index };
-  } else {
-    // Keep the last grapheme for the next chunk: a chunk boundary may fall in
-    // the middle of a surrogate pair, combining sequence or emoji ZWJ cluster.
-    let start = 0, size = 8192;
-    while (start < text.length) {
-      let end = Math.min(text.length, start + size);
-      if (end < text.length && /[\ud800-\udbff]/.test(text[end - 1])) end--;
-      let previous: { segment: string; index: number } | undefined;
-      for (const part of segmenter.segment(text.slice(start, end))) {
-        if (previous) yield { segment: previous.segment, index: start + previous.index };
-        previous = part;
-      }
-      if (!previous) break;
-      if (end === text.length) { yield { segment: previous.segment, index: start + previous.index }; break; }
-      if (previous.index === 0) size *= 2;
-      else { start += previous.index; size = 8192; }
-    }
-  }
-}
-function lazyLine(source: string, start: number, length: number, base: number): Line {
-  let value: string | undefined;
-  return { offset: base + start, get text() { return value ??= source.slice(start, start + length); } };
-}
-
-export function wrap(text: string, columns: number): Line[] {
-  const width = Math.max(1, Math.floor(columns));
-  const result: Line[] = [];
-  const widths = new Map<string, number>();
-  let base = 0;
-  for (const paragraph of text.split('\n')) {
-    let line = '', cells = 0, start = 0, lastSpace = -1;
-    if (!paragraph) result.push({ text: '', offset: base });
-    // Stream graphemes: never allocate an object per character for a huge paragraph.
-    for (const part of graphemes(paragraph)) {
-      let size = /^[\x20-\x7e]$/.test(part.segment) ? 1 : widths.get(part.segment);
-      if (size === undefined) {
-        size = stringWidth(part.segment);
-        if (widths.size < 1024 && part.segment.length <= 64) widths.set(part.segment, size);
-      }
-      let broke = false;
-      while (line && cells + size > width) {
-        broke = true;
-        if (lastSpace > 0) {
-          result.push(lazyLine(paragraph, start, line.slice(0, lastSpace).trimEnd().length, base));
-          start += lastSpace;
-          line = line.slice(lastSpace);
-          cells = stringWidth(line);
-        } else {
-          result.push(lazyLine(paragraph, start, line.trimEnd().length, base));
-          line = ''; cells = 0; start = part.index;
-        }
-        lastSpace = -1;
-      }
-      if (broke && !line && part.segment === ' ') continue;
-      if (!line) start = part.index;
-      if (size > width) {
-        result.push({ text: '\ufffd', offset: base + part.index });
-        line = ''; cells = 0; lastSpace = -1;
-        continue;
-      }
-      line += part.segment;
-      cells += size;
-      if (part.segment === ' ') lastSpace = line.length;
-    }
-    if (line) result.push(lazyLine(paragraph, start, line.trimEnd().length, base));
-    base += paragraph.length + 1;
-  }
-  return result;
-}
 
 export class Screen {
   chapter = 0;
@@ -108,7 +38,7 @@ export class Screen {
     const key = `${this.chapter}:${this.geometry.width}`;
     if (key !== this.activeWrap) {
       const cached = this.wraps.get(key);
-      this.lines = cached ?? wrap(this.book.chapters[this.chapter].text, this.geometry.width);
+      this.lines = cached ?? layoutChapter(this.book.chapters[this.chapter], this.geometry.width);
       this.activeWrap = key;
       if (cached) this.wraps.delete(key);
       else this.cachedLineCount += this.lines.length;
@@ -126,6 +56,19 @@ export class Screen {
       if (this.lines[middle].offset <= this.offset) low = middle + 1; else high = middle;
     }
     this.row = Math.max(0, low - 1);
+    const table = this.book.chapters[this.chapter].tables?.find(table => this.offset >= table.offset && this.offset < table.offset + table.length);
+    if (table) {
+      let distance = Infinity;
+      for (const [index, line] of this.lines.entries()) {
+        if (line.tableOffset !== table.offset) continue;
+        if (!line.runs?.length && line.offset === this.offset && this.offset === table.offset) { this.row = index; break; }
+        for (const run of line.runs ?? []) {
+          const current = this.offset < run.offset ? run.offset - this.offset : this.offset >= run.offset + run.length ? this.offset - run.offset - run.length + 1 : 0;
+          if (current < distance) { this.row = index; distance = current; }
+        }
+        if (!distance) break;
+      }
+    }
   }
   move(delta: number): void {
     this.row = Math.max(0, Math.min(this.lines.length - 1, this.row + delta));
@@ -183,10 +126,10 @@ export class Screen {
     const links: Array<{ startIndex: number; length: number; id: string }> = [];
     for (const line of this.lines.slice(this.row, this.row + this.rows)) {
       if ((this.effectivePrefix + line.text).trimEnd() !== text.trimEnd()) continue;
-      for (const ref of references) {
-        const start = Math.max(ref.offset, line.offset);
-        const end = Math.min(ref.offset + ref.length, line.offset + line.text.length);
-        if (end > start) links.push({ startIndex: this.effectivePrefix.length + start - line.offset, length: end - start, id: ref.id });
+      for (const run of line.runs ?? [{ startIndex: 0, offset: line.offset, length: line.text.length }]) for (const ref of references) {
+        const start = Math.max(ref.offset, run.offset);
+        const end = Math.min(ref.offset + ref.length, run.offset + run.length);
+        if (end > start) links.push({ startIndex: this.effectivePrefix.length + run.startIndex + start - run.offset, length: end - start, id: ref.id });
       }
     }
     // VS Code supplies text rather than a row number: discard ambiguous fragments.
@@ -198,7 +141,7 @@ export class Screen {
     // Reserve the last terminal cell to avoid wrap-pending/accidental scroll.
     const prefix = this.effectivePrefix;
     return '\x1b[H\x1b[2J' + this.lines.slice(this.row, this.row + this.rows)
-      .map(line => prefix + highlightLine(line, highlights)).join('\r\n');
+      .map(line => prefix + highlightLine(line, highlights, this.book.chapters[this.chapter].styles ?? [])).join('\r\n');
   }
 }
 
@@ -216,14 +159,24 @@ export function findMatches(book: Book, query: string, limit = 200): Array<Locat
   return matches;
 }
 
-function highlightLine(line: Line, highlights: Highlight[]): string {
-  const ranges = highlights.filter(range => range.offset < line.offset + line.text.length && range.offset + range.length > line.offset);
-  if (!ranges.length) return line.text;
+function highlightLine(line: Line, highlights: Highlight[], styles: StyleSpan[]): string {
+  const runs = line.runs ?? [{ startIndex: 0, offset: line.offset, length: line.text.length }];
+  const intersects = (span: { offset: number; length: number }) => runs.some(run => span.offset < run.offset + run.length && span.offset + span.length > run.offset);
+  const ranges = highlights.filter(intersects), formatting = styles.filter(intersects);
+  if (!ranges.length && !formatting.length) return line.text;
   let result = '', style = '';
   for (const part of segmenter.segment(line.text)) {
-    const start = line.offset + part.index, end = start + part.segment.length;
-    const matches = ranges.filter(range => range.offset < end && range.offset + range.length > start);
-    const next = matches.some(range => range.active) ? '\x1b[7m' : matches.length ? '\x1b[4m' : '';
+    const run = runs.find(run => part.index >= run.startIndex && part.index < run.startIndex + run.length);
+    const start = run ? run.offset + part.index - run.startIndex : -1, end = start + part.segment.length;
+    const matches = start < 0 ? [] : ranges.filter(range => range.offset < end && range.offset + range.length > start);
+    const spans = start < 0 ? [] : formatting.filter(span => span.offset < end && span.offset + span.length > start);
+    const codes: number[] = [];
+    if (spans.some(span => span.bold)) codes.push(1);
+    if (spans.some(span => span.italic)) codes.push(3);
+    if (spans.some(span => span.underline) || matches.some(match => !match.active)) codes.push(4);
+    if (spans.some(span => span.strike)) codes.push(9);
+    if (matches.some(match => match.active)) codes.push(7);
+    const next = codes.length ? `\x1b[${codes.join(';')}m` : '';
     if (next !== style) { result += '\x1b[0m' + next; style = next; }
     result += part.segment;
   }

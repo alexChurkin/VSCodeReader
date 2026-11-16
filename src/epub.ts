@@ -1,9 +1,11 @@
+import { parseDocument } from 'htmlparser2';
+import { cssRules, type CssRule } from './presentation';
 import { attachFootnotes } from './footnotes';
 import type { LinkReference } from './xml';
 import { decodeXml as decode } from './encoding';
 import { isRasterMediaType } from './images';
 import { Archive, resolveHref } from './archive';
-import { chapterText, content, elements, xml, validatedXml, localName } from './xml';
+import { documentText, content, elements, xml, validatedXml, localName } from './xml';
 import { safeText, type Book, type BookImage, type Chapter, type TocItem } from './book';
 
 export async function readEpub(bytes: Uint8Array, signal?: AbortSignal): Promise<Book> {
@@ -30,11 +32,28 @@ export async function readEpub(bytes: Uint8Array, signal?: AbortSignal): Promise
         if (archive.has(path) && !images.some(image => image.id === path)) images.push({ id: path, label: safeText(path), mediaType: item.attribs['media-type'], chapters: [] });
       } catch { /* Remote images are never fetched. */ }
     }
+    const styleCache = new Map<string, CssRule[]>();
     const references: LinkReference[][] = [];
     const loadChapter = async (path: string) => {
       signal?.throwIfAborted();
       const source = decode(await archive.read(path));
-      const heading = chapterText(validatedXml(source));
+      const chapterDoc = parseDocument(validatedXml(source), { decodeEntities: true });
+      const rules: CssRule[] = [];
+      for (const link of elements(chapterDoc, 'link')) {
+        if (!(link.attribs.rel ?? '').toLowerCase().split(/\s+/).includes('stylesheet') || !link.attribs.href || /\bprint\b/i.test(link.attribs.media ?? '')) continue;
+        let cssPath: string;
+        try { cssPath = resolveHref(path, link.attribs.href).path; } catch { continue; }
+        if (!archive.has(cssPath)) continue;
+        let stylesheet = styleCache.get(cssPath);
+        if (!stylesheet) {
+          const bytes = await archive.read(cssPath);
+          stylesheet = bytes.length <= 1024 * 1024 ? cssRules(bytes.toString('utf8')) : [];
+          styleCache.set(cssPath, stylesheet);
+        }
+        rules.push(...stylesheet.slice(0, 5000 - rules.length));
+        if (rules.length >= 5000) break;
+      }
+      const heading = documentText(chapterDoc, rules);
       references.push(heading.links);
       const imageLinks: NonNullable<Chapter['imageLinks']> = [];
       for (const ref of heading.images) {
@@ -49,7 +68,7 @@ export async function readEpub(bytes: Uint8Array, signal?: AbortSignal): Promise
         } catch { /* External image references stay inert. */ }
       }
       const title = heading.title;
-      chapters.push({ id: path, title: title.slice(0, 200) || `Section ${chapters.length + 1}`, text: heading.text, anchors: heading.anchors, imageMarkers: heading.markers, imageLinks });
+      chapters.push({ id: path, title: title.slice(0, 200) || `Section ${chapters.length + 1}`, text: heading.text, anchors: heading.anchors, styles: heading.styles, tables: heading.tables, imageMarkers: heading.markers, imageLinks });
     };
     const auxiliary: string[] = [];
     for (const itemref of elements(spine, 'itemref')) {

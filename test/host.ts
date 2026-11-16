@@ -220,6 +220,31 @@ export async function run(): Promise<void> {
     tools.handleInput('u'); assert.deepEqual(tools.snapshot.position, firstMatch);
     tools.goTo(original); assert.deepEqual(tools.snapshot.position, original);
   } finally { tools.close(); toolsTerminal.dispose(); toolsOutputSubscription.dispose(); toolsCancellation.dispose(); }
+  const richBook = readMarkup(Buffer.from('<style>p.Heading-2 {font-variation-settings:"wght" 700;font-size:1.333em} .weight {font-weight:bold}</style><p class="Heading-2">Publisher heading</p><p>Plain <span class="weight">emphasized text</span>.</p><table><tr><th>Name</th><th>Value</th><th>Reference</th></tr><tr><td>First row</td><td><em>Italic value</em></td><td><a href="#note">[n]</a> <img src="pic.png" alt="Picture"></td></tr></table><h2 id="note">Footnote</h2><p>Note details.</p>'), 'rich.html').book;
+  const rich = new ReaderTerminal(richBook, '', restoreState(undefined, richBook), () => {}, async () => {});
+  let richOutput = '';
+  const richOutputSubscription = rich.onDidWrite(frame => { richOutput = frame; });
+  const richTerminal = vscode.window.createTerminal({ name: 'formatted-reader', pty: rich });
+  const richCancellation = new vscode.CancellationTokenSource();
+  try {
+    richTerminal.show(); await until(() => richOutput.includes('Publisher heading'));
+    rich.setDimensions({ columns: 100, rows: 60 });
+    assert.match(richOutput, /\x1b\[1;4mPublisher heading/);
+    assert.match(richOutput, /\x1b\[1memphasized text/);
+    assert.match(richOutput, /\x1b\[3mItalic value/);
+    assert.match(richOutput, /\+---/);
+    rich.startSearch('emphasized'); assert.match(richOutput, /\x1b\[1;7memphasized/);
+    rich.clearSearch(); rich.goTo({ chapter: 0, offset: 0 });
+    const provider = new ReaderLinks(candidate => candidate === richTerminal ? rich : undefined);
+    const links = richOutput.replace(/\x1b\[[0-9;]*[A-Za-z]/g, '').split('\r\n').flatMap(line => provider.provideTerminalLinks({ terminal: richTerminal, line }, richCancellation.token));
+    assert.ok(links.some(link => link.kind === 'image'));
+    const reference = links.find(link => link.kind === 'footnote'); assert.ok(reference);
+    await provider.handleTerminalLink(reference); assert.equal(rich.snapshot.position.chapter, 1);
+    rich.travel(-1); assert.equal(rich.snapshot.position.chapter, 0);
+    rich.setDimensions({ columns: 30, rows: 100 }); assert.match(richOutput, /Row 2/);
+    const source = rich.snapshot.position;
+    rich.setDimensions({ columns: 100, rows: 60 }); assert.deepEqual(rich.snapshot.position, source);
+  } finally { rich.close(); richTerminal.dispose(); richOutputSubscription.dispose(); richCancellation.dispose(); }
   // Exercise real extension activation, worker, terminal creation, and resume command.
   const sample = vscode.Uri.joinPath(extension.extensionUri, 'samples', 'alice-in-wonderland.epub');
   const previous = new Set(vscode.window.terminals);
