@@ -13,6 +13,7 @@ export class ReaderTerminal implements vscode.Pseudoterminal {
   private readonly writes = new vscode.EventEmitter<string>();
   readonly onDidWrite = this.writes.event;
   readonly screen: Screen;
+  private linkRevision = 0;
   private hidden = false;
   private closed = false;
   private opened = false;
@@ -71,6 +72,7 @@ export class ReaderTerminal implements vscode.Pseudoterminal {
   resume(): void { if (this.closed) return; this.pending = ''; this.hidden = false; this.draw(); this.changes.fire(); }
   private draw(): void {
     if (this.closed) return;
+    this.linkRevision++;
     let frame = this.hidden ? CLEAR + 'ready' : this.screen.render();
     if (this.hasFooter) {
       const end = this.screen.chapter === this.screen.book.chapters.length - 1 && this.screen.row + this.screen.rows >= this.screen.lines.length;
@@ -78,6 +80,14 @@ export class ReaderTerminal implements vscode.Pseudoterminal {
       frame += `\x1b[${this.viewport.rows};1H\x1b[2K\x1b[2m${hint}\x1b[0m`;
     }
     this.writes.fire(frame);
+  }
+  imageLinks(line: string) {
+    if (this.closed || this.hidden || this.busy || !this.imagePreview) return [];
+    return this.screen.imageLinks(line).map(link => ({ ...link, revision: this.linkRevision }));
+  }
+  async openImageLink(imageId: string, revision: number): Promise<void> {
+    if (this.closed || this.hidden || this.busy || revision !== this.linkRevision) return;
+    await this.showImages(imageId);
   }
   get isClosed(): boolean { return this.closed; }
   private get hasFooter(): boolean { return this.viewport.rows >= 2 && this.viewport.columns >= 2; }
@@ -256,7 +266,7 @@ export class ReaderTerminal implements vscode.Pseudoterminal {
         await vscode.window.showQuickPick([
           'j/k or arrows: move one line', 'Space / PageDown / PageUp: move one screen',
           'n/p: next / previous chapter', 'g: table of contents', '/: search book (first 200 matches)',
-          'b: save bookmark; B: list bookmarks', 's: show progress; l: go to page or percentage', 'i: open an illustration in an editor tab', 'Escape: hide text; r: resume hidden text; q: close reader'
+          'b: save bookmark; B: list bookmarks', 's: show progress; l: go to page or percentage', 'Ctrl+click an image marker: open that illustration in an editor tab', 'i: choose an illustration with the keyboard', 'Escape: hide text; r: resume hidden text; q: close reader'
         ], { title: 'Reader keys' });
         return;
       }

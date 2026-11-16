@@ -53,6 +53,7 @@ With focus in the reader terminal:
 | `B` | Go to a bookmark |
 | `s` | Show chapter, screen, page and percentage |
 | `l` | Jump to a page number or percentage |
+| Ctrl+click image marker | Open that illustration in a separate editor tab (Cmd+click on macOS; use the modifier shown in the tooltip) |
 | `i` | Open the current illustration, or choose one if there are several |
 | `?` | Keyboard help |
 | Escape | Hide the text and show resume instructions |
@@ -73,13 +74,13 @@ Position and bookmark data stay local. Changing the source file starts a new rea
 
 ## Images and comics
 
-The terminal shows text markers instead of inline images. Press `i` to open an illustration in a separate editor tab. When the current chapter has one image, it opens directly; otherwise a picker lists the book's images with current-chapter images first. **VSCodeReader: Open Image** lists all available images, including covers. The terminal keeps keyboard focus so you can continue navigating.
+The terminal shows numbered image markers such as `[image #1: Rabbit]`. **Ctrl+click a marker** to open that exact illustration in a separate editor tab (Cmd+click on macOS, or the modifier shown by VS Code on hover). Links belong to their reading terminal and are invalidated when the page changes or the reader is hidden/closed. Long markers can wrap; use `i` if a fragment is ambiguous on a very narrow terminal. Press `i` to open an illustration in a separate editor tab. When the current chapter has one image, it opens directly; otherwise a picker lists the book's images with current-chapter images first. **VSCodeReader: Open Image** lists all available images, including covers. The terminal keeps keyboard focus so you can continue navigating.
 
 EPUB archive images, FB2 base64 images and HTML/Markdown illustrations are loaded only when requested. PNG, JPEG, GIF, WebP and BMP are supported. SVG and remote images are not opened. Images are limited to 10 MiB, 40 megapixels and 16,384 pixels per side. A bounded local preview cache holds at most 128 files / 100 MiB; old previews may need to be reopened from the book after eviction.
 
 For HTML/Markdown, image paths are resolved relative to the document folder. Images must stay inside that folder, including after resolving symlinks. Absolute paths, parent-directory escapes and remote URLs are not opened; HTML `<base>` and `srcset` are not used. Raster `data:image/...;base64,...` images are also supported. Original HTML/Markdown files still open in the normal VS Code editor; use Open Book for reading mode.
 
-For CBZ, use `n` / `p` to select a page and `i` to open it. Pages stay in separate image tabs; page changes do not automatically open images. If the book changes on disk, close its reading terminal and reopen it before viewing more images.
+For CBZ, use `n` / `p` to select a page and Ctrl+click its image marker or press `i` to open it. Pages stay in separate image tabs; page changes do not automatically open images. If the book changes on disk, close its reading terminal and reopen it before viewing more images.
 
 ## Settings
 

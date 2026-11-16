@@ -29,13 +29,14 @@ export function footerText(state: HintState): string {
     const action = state.mode === 'search' ? 'Search text' : state.mode === 'location' ? 'Page number or 40%' : state.mode === 'name' ? 'Bookmark name' : 'Select an item';
     variants.push(`${action} | Enter confirm | Esc cancel`, 'Enter confirm | Esc cancel', 'Enter OK | Esc cancel', 'Esc cancel');
   } else {
-    const image = state.images ? ' | i images' : '';
+    const image = state.images ? ' | Ctrl+click image | i images' : '';
     const bookmarks = state.bookmarks ? ' | B bookmarks' : '';
     const start = state.end ? 'End of book | PgUp back' : 'Space/PgDn next | PgUp back';
     variants.push(
       `${start} | j/k scroll | n/p chapter | g contents | / search | b bookmark${bookmarks}${image} | l page | s progress | ? help | Esc hide | q close`,
       `${state.end ? 'End | PgUp back' : 'Space/PgUp page'} | g toc | / find | b save${state.bookmarks ? ' | B list' : ''}${state.images ? ' | i img' : ''} | ? help | Esc hide`,
-      `${state.end ? 'End | PgUp back' : 'Space next'} | b save${image} | ? help | Esc hide`,
+      ...(state.images ? ['Ctrl+click image | i images | ? help | Esc hide'] : []),
+      `${state.end ? 'End | PgUp back' : 'Space next'} | b save${state.images ? ' | i images' : ''} | ? help | Esc hide`,
       `${state.end ? 'PgUp back' : 'Space next'} | b save | ? help`,
       '? help | Esc hide', '? help', '?'
     );

@@ -10,3 +10,4 @@
 - Publish the installer as the single GitHub Release `v0.1.0` after successful main builds, replacing the VSIX and checksum assets. Do not treat a local VSIX or an Actions artifact alone as the release.
 - Include the current 12-character Git commit SHA in the GitHub Release title (for example `VSCodeReader 0.1.0 · code abc123def456`) and link the full commit in its description. Keep the stable download URL.
 - `npm run check` must include ESLint with zero warnings, strict TypeScript checks, unit tests and the production build. Fix lint findings rather than disabling rules across the project.
+- Keep terminal image links scoped to their own reader and image references. Hidden/closed readers and stale frames must not open images; preserve the keyboard image picker and the native image editor tabs.

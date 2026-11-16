@@ -13,6 +13,7 @@ import { isMarkup } from './markup';
 import type { TextEncoding } from './encoding';
 import { previewImage } from './image-preview';
 import { ReaderTerminal } from './terminal';
+import { ReaderImageLinks } from './terminal-links';
 
 interface Session { id: string; source: RecentBook; terminal: vscode.Terminal; reader: ReaderTerminal }
 type LastBook = RecentBook;
@@ -115,6 +116,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     if (latest === session) latest = [...sessions.values()].at(-1);
     refresh();
   };
+  context.subscriptions.push(vscode.window.registerTerminalLinkProvider(new ReaderImageLinks(terminal => [...sessions.values()].find(session => session.terminal === terminal)?.reader)));
   context.subscriptions.push(library, vscode.window.createTreeView('vscodeReader.library', { treeDataProvider: library, showCollapseAll: true }));
   refresh();
   const open = async (resource?: vscode.Uri, saved?: LastBook) => {
@@ -154,7 +156,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         await writes;
         const rawState = await storage.get<ReadingState>(key);
         const state = restoreState(rawState, book);
-        if (!rawState) state.chapter = Math.max(0, book.chapters.findIndex(c => c.text.replace(/\[image: [^\]]*\]|\[empty chapter\]|\s/g, '').length > 0));
+        if (!rawState) state.chapter = Math.max(0, book.chapters.findIndex(c => c.text.replace(/\[image(?: #\d+)?: [^\]]*\]|\[empty chapter\]|\s/g, '').length > 0));
         const source: RecentBook = { uri: id, entry: options.entry, encoding: options.encoding, title: book.title.slice(0, 200), imagePages: book.imagePages };
         const reader = new ReaderTerminal(book, config.get<string>('linePrefix', ''), state, value => {
           update(key, structuredClone(value));

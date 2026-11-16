@@ -1,8 +1,10 @@
+export interface ChapterImageLink { imageId: string; offset: number; length: number }
 export interface Chapter {
   id: string;
   title: string;
   text: string;
   anchors: Record<string, number>;
+  imageLinks?: ChapterImageLink[];
 }
 export interface TocItem { title: string; chapter: number; offset: number; depth: number }
 export interface BookImage {

@@ -81,6 +81,12 @@ export function readMarkup(bytes: Uint8Array, filename: string, encoding: TextEn
     }
     const { chapter } = locate(ref.offset);
     if (!image.chapters.includes(chapter)) image.chapters.push(chapter);
+    // A long marker can cross the artificial 64k section boundary.
+    for (let index = chapter; index < chapters.length && starts[index] < ref.offset + ref.length; index++) {
+      const offset = Math.max(0, ref.offset - starts[index]);
+      const end = Math.min(chapters[index].text.length, ref.offset + ref.length - starts[index]);
+      if (end > offset) (chapters[index].imageLinks ??= []).push({ imageId: image.id, offset, length: end - offset });
+    }
   }
   return { book: { title: safeText(title), author: safeText(author), chapters, toc, images }, resources };
 }

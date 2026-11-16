@@ -1,6 +1,7 @@
 import stringWidth from 'string-width';
 import { safeText, type Book, type Locator } from './book';
 
+export interface ImageLinkRange { startIndex: number; length: number; imageId: string }
 export interface Line { text: string; offset: number }
 const segmenter = new Intl.Segmenter(undefined, { granularity: 'grapheme' });
 
@@ -93,6 +94,24 @@ export class Screen {
     }
   }
   private get effectivePrefix(): string { return stringWidth(this.prefix) < this.columns - 1 ? this.prefix : ''; }
+  imageLinks(text: string): ImageLinkRange[] {
+    const references = this.book.chapters[this.chapter].imageLinks ?? [];
+    const links: ImageLinkRange[] = [];
+    // VS Code supplies line text, not a buffer row number. Only use lines from
+    // our current viewport and discard ambiguous wrapped fragments.
+    for (const line of this.lines.slice(this.row, this.row + this.rows)) {
+      if ((this.effectivePrefix + line.text).trimEnd() !== text.trimEnd()) continue;
+      for (const ref of references) {
+        const start = Math.max(ref.offset, line.offset);
+        const end = Math.min(ref.offset + ref.length, line.offset + line.text.length);
+        if (end <= start || !this.book.images?.some(image => image.id === ref.imageId)) continue;
+        links.push({ startIndex: this.effectivePrefix.length + start - line.offset, length: end - start, imageId: ref.imageId });
+      }
+    }
+    return links.filter((link, index) =>
+      !links.some(other => other.imageId !== link.imageId && other.startIndex < link.startIndex + link.length && link.startIndex < other.startIndex + other.length)
+      && links.findIndex(other => other.startIndex === link.startIndex && other.length === link.length && other.imageId === link.imageId) === index);
+  }
   render(): string {
     // Reserve the last terminal cell to avoid wrap-pending/accidental scroll.
     const prefix = this.effectivePrefix;

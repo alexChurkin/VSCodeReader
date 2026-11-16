@@ -16,7 +16,7 @@ void test('EPUB reading order follows spine, not ZIP/manifest order, with nav an
   assert.equal(b.title, 'Test book'); assert.equal(b.author, 'Author');
   assert.equal(b.chapters.length, 2); assert.match(b.chapters[0].text, /Alice/);
   assert.match(b.chapters[0].text, /Intro & text/);
-  assert.match(b.chapters[0].text, /\[image: rabbit\]/);
+  assert.match(b.chapters[0].text, /\[image #1: rabbit\]/);
   assert.doesNotMatch(b.chapters[0].text, /bad\(\)/);
   assert.equal(b.toc[0].title, 'First entry');
   assert.equal(b.chapters[0].text.slice(b.toc[0].offset, b.toc[0].offset + 13), 'First chapter');

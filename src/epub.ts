@@ -37,16 +37,21 @@ export async function readEpub(bytes: Uint8Array, signal?: AbortSignal): Promise
       const path = resolveHref(packagePath, item.attribs.href).path;
       const source = decode(await archive.read(path));
       const heading = chapterText(source);
+      const imageLinks: NonNullable<Chapter['imageLinks']> = [];
       for (const ref of heading.images) {
         try {
           const target = resolveHref(path, ref.href).path;
           const image = images.find(i => i.id === target);
-          if (image) { if (!image.chapters.includes(chapters.length)) image.chapters.push(chapters.length); if (ref.label !== 'illustration') image.label = ref.label; }
+          if (image) {
+            if (!image.chapters.includes(chapters.length)) image.chapters.push(chapters.length);
+            if (ref.label !== 'illustration') image.label = ref.label;
+            imageLinks.push({ imageId: image.id, offset: ref.offset, length: ref.length });
+          }
         } catch { /* External image references stay inert. */ }
       }
       const titleDoc = xml(source);
       const title = content(elements(titleDoc, 'h1')[0] ?? elements(titleDoc, 'h2')[0] ?? elements(titleDoc, 'title')[0] ?? titleDoc);
-      chapters.push({ id: path, title: title.slice(0, 200) || `Section ${chapters.length + 1}`, text: heading.text, anchors: heading.anchors });
+      chapters.push({ id: path, title: title.slice(0, 200) || `Section ${chapters.length + 1}`, text: heading.text, anchors: heading.anchors, imageLinks });
     }
     if (!chapters.length) throw new Error('EPUB has no readable chapters.');
     const toc: TocItem[] = [];

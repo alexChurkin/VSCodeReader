@@ -53,7 +53,10 @@ export async function readBook(bytes: Uint8Array, options: ReadOptions): Promise
       const pages = [...archive.entries.keys()].filter(path => /\.(?:png|jpe?g|gif|webp|bmp)$/i.test(path)).sort((a, b) => collator.compare(a, b) || a.localeCompare(b));
       if (!pages.length) throw new Error('CBZ contains no supported raster images.');
       const images = pages.map((id, index) => ({ id, label: safeText(id), mediaType: 'image/' + (id.split('.').at(-1)!.toLowerCase().replace('jpg', 'jpeg')), chapters: [index] }));
-      const chapters = pages.map((path, index) => ({ id: path, title: `Page ${index + 1}`, text: `[image: ${safeText(path)}]\n\nPress i to open this page in an editor tab.`, anchors: {} }));
+      const chapters = pages.map((path, index) => {
+        const marker = `[image #${index + 1}: ${safeText(path).replace(/\s+/g, ' ')}]`;
+        return { id: path, title: `Page ${index + 1}`, text: `${marker}\n\nCtrl+click the image or press i to open this page in an editor tab.`, anchors: {}, imageLinks: [{ imageId: path, offset: 0, length: marker.length }] };
+      });
       return { kind: 'book', book: { title: safeText(posix.basename(options.filename)), author: '', imagePages: true, chapters, toc: chapters.map((c, chapter) => ({ title: c.title, chapter, offset: 0, depth: 0 })), images } };
     } finally { archive.close(); }
   }

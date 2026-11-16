@@ -26,7 +26,7 @@ export function readFb2(bytes: Uint8Array): Book {
     for (const section of sections) section.attribs.id ||= `__vscode_reader_section_${serial++}`;
     const rendered = renderNodes(nodes, true);
     const index = chapters.length;
-    chapters.push({ id: `body-${index}`, title: safeText(label), text: rendered.text, anchors: rendered.anchors });
+    chapters.push({ id: `body-${index}`, title: safeText(label), text: rendered.text, anchors: rendered.anchors, imageLinks: [] });
     if (!sections.length) toc.push({ title: label, chapter: index, offset: 0, depth: 0 });
     for (const section of sections) {
       let depth = 0, parent = section.parent;
@@ -37,7 +37,10 @@ export function readFb2(bytes: Uint8Array): Book {
     for (const ref of rendered.images) {
       if (!ref.href.startsWith('#')) continue;
       const image = images.find(i => i.id === ref.href.slice(1));
-      if (image && !image.chapters.includes(index)) image.chapters.push(index);
+      if (image) {
+        if (!image.chapters.includes(index)) image.chapters.push(index);
+        if (ref.length) chapters[index].imageLinks!.push({ imageId: image.id, offset: ref.offset, length: ref.length });
+      }
     }
   };
   for (const body of children(root, 'body')) {

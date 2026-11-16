@@ -7,6 +7,10 @@ import { zip, fb2, png } from './fixtures';
 import { ReaderLibrary, type LibraryBook } from '../src/library';
 import type { ReadingProgress } from '../src/progress';
 import { ReaderTerminal } from '../src/terminal';
+import { ReaderImageLinks } from '../src/terminal-links';
+import { readFb2 } from '../src/fb2';
+import { previewImage } from '../src/image-preview';
+import { validateImage } from '../src/images';
 import { restoreState, type Book, type ReadingState } from '../src/book';
 
 const pause = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
@@ -95,6 +99,55 @@ export async function run(): Promise<void> {
     resumed.close(); resumed.open(); resumed.open();
     assert.equal(earlyExits, 1, 'Closing before open must acknowledge exit when the process starts');
   } finally { terminal.dispose(); reader.close(); subscription.dispose(); }
+  // Exercise the same link provider registered by the extension, including the
+  // native image editor and ownership when two sessions have identical markers.
+  const imageBook = readFb2(Buffer.from(fb2));
+  let firstOpens = 0, secondOpens = 0;
+  const first = new ReaderTerminal(imageBook, '[log] ', restoreState(undefined, imageBook), () => {}, async image => {
+    assert.equal(image.id, 'picture'); firstOpens++;
+    await previewImage(persistenceDirectory, validateImage(png));
+  });
+  const second = new ReaderTerminal(imageBook, '[log] ', restoreState(undefined, imageBook), () => {}, async () => { secondOpens++; });
+  const firstTerminal = vscode.window.createTerminal({ name: 'image-links-first', pty: first });
+  const secondTerminal = vscode.window.createTerminal({ name: 'image-links-second', pty: second });
+  const linkCancellation = new vscode.CancellationTokenSource();
+  try {
+    await pause(200);
+    first.setDimensions({ columns: 120, rows: 40 }); second.setDimensions({ columns: 120, rows: 40 });
+    const provider = new ReaderImageLinks(candidate => candidate === firstTerminal ? first : candidate === secondTerminal ? second : undefined);
+    const line = '[log] ' + first.screen.lines.find(item => item.text.includes('[image #'))!.text;
+    const query = { terminal: firstTerminal, line };
+    const links = provider.provideTerminalLinks(query, linkCancellation.token);
+    assert.equal(links.length, 1);
+    assert.match(links[0].tooltip!, /illustration/);
+    await provider.handleTerminalLink(links[0]);
+    assert.equal(firstOpens, 1); assert.equal(secondOpens, 0);
+    let imageTab: vscode.Tab | undefined;
+    await until(() => {
+      imageTab = vscode.window.tabGroups.all.flatMap(group => group.tabs).find(tab => tab.input instanceof vscode.TabInputCustom && tab.input.uri.path.endsWith('.png'));
+      return !!imageTab;
+    });
+    assert.ok(imageTab && imageTab.input instanceof vscode.TabInputCustom);
+    assert.deepEqual(Buffer.from(await vscode.workspace.fs.readFile(imageTab.input.uri)), png);
+    await vscode.window.tabGroups.close(imageTab);
+    await provider.handleTerminalLink(provider.provideTerminalLinks({ terminal: secondTerminal, line }, linkCancellation.token)[0]);
+    assert.equal(secondOpens, 1);
+    const stale = provider.provideTerminalLinks(query, linkCancellation.token)[0];
+    first.goTo({ chapter: 1, offset: 0 });
+    await provider.handleTerminalLink(stale); assert.equal(firstOpens, 1, 'Navigation invalidates links from previous frames');
+    first.goTo({ chapter: 0, offset: 0 });
+    const hidden = provider.provideTerminalLinks(query, linkCancellation.token)[0];
+    first.hide();
+    assert.deepEqual(provider.provideTerminalLinks(query, linkCancellation.token), []);
+    await provider.handleTerminalLink(hidden); assert.equal(firstOpens, 1);
+    first.resume();
+    const closed = provider.provideTerminalLinks(query, linkCancellation.token)[0];
+    first.close(); await provider.handleTerminalLink(closed); assert.equal(firstOpens, 1);
+    assert.deepEqual(provider.provideTerminalLinks({ terminal, line }, linkCancellation.token), []);
+    const cancellation = new vscode.CancellationTokenSource(); cancellation.cancel();
+    assert.deepEqual(provider.provideTerminalLinks({ terminal: secondTerminal, line }, cancellation.token), []);
+    cancellation.dispose();
+  } finally { linkCancellation.dispose(); first.close(); second.close(); firstTerminal.dispose(); secondTerminal.dispose(); }
   // Exercise real extension activation, worker, terminal creation, and resume command.
   const sample = vscode.Uri.joinPath(extension.extensionUri, 'samples', 'alice-in-wonderland.epub');
   const previous = new Set(vscode.window.terminals);

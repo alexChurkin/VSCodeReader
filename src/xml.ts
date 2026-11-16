@@ -37,7 +37,7 @@ export function xml(source: string) {
   return parseDocument(source, { xmlMode: true, decodeEntities: true });
 }
 
-export interface ImageReference { href: string; label: string; offset: number }
+export interface ImageReference { href: string; label: string; offset: number; length: number }
 export function chapterText(source: string) {
   const doc = parseDocument(source, { decodeEntities: true });
   const body = elements(doc, 'body')[0] ?? doc;
@@ -48,6 +48,7 @@ export function renderNodes(nodes: AnyNode[], fb2 = false, markup = false): { te
   const ignored = new Set(['script', 'style', 'head', 'iframe', 'object', 'embed', 'form', 'svg', 'audio', 'video']);
   const blocks = new Set([...(fb2 ? ['title', 'subtitle', 'epigraph', 'annotation', 'poem', 'stanza', 'v', 'cite', 'text-author'] : []), 'p', 'div', 'section', 'article', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'li', 'blockquote', 'pre', 'tr', 'dt', 'dd']);
   let output = '';
+  let imageSerial = 0;
   const anchors: Record<string, number> = Object.create(null);
   const images: ImageReference[] = [];
   const headings: HeadingReference[] = [];
@@ -65,13 +66,18 @@ export function renderNodes(nodes: AnyNode[], fb2 = false, markup = false): { te
     }
     if (!isElement(node)) continue;
     const tag = localName(node.name);
+    if (node.attribs.hidden !== undefined || node.attribs['aria-hidden'] === 'true') continue;
     if (tag === 'svg') {
       for (const image of elements(node, 'image')) {
         const href = image.attribs['xlink:href'] ?? image.attribs.href ?? Object.entries(image.attribs).find(([key]) => key.endsWith(':href'))?.[1];
-        if (href) images.push({ href, label: 'illustration', offset: output.length });
+        if (href) {
+          const marker = `[image #${++imageSerial}: illustration]`;
+          images.push({ href, label: 'illustration', offset: output.length, length: marker.length });
+          output += marker;
+        }
       }
     }
-    if ((markup && ['template', 'noscript', 'button', 'select', 'textarea', 'input'].includes(tag)) || ignored.has(tag) || node.attribs.hidden !== undefined || node.attribs['aria-hidden'] === 'true') continue;
+    if ((markup && ['template', 'noscript', 'button', 'select', 'textarea', 'input'].includes(tag)) || ignored.has(tag)) continue;
     if (end) {
       if (markup && (tag === 'td' || tag === 'th')) output += ' | ';
       if (blocks.has(tag)) boundary(); continue;
@@ -92,8 +98,9 @@ export function renderNodes(nodes: AnyNode[], fb2 = false, markup = false): { te
     else if (tag === 'img' || tag === 'image') {
       const href = node.attribs.src ?? node.attribs['xlink:href'] ?? node.attribs.href ?? Object.entries(node.attribs).find(([key]) => key.endsWith(':href'))?.[1];
       const label = safeText(node.attribs.alt || node.attribs.title || 'illustration').replace(/\s+/g, ' ');
-      if (href) images.push({ href, label, offset: output.length });
-      output += `[image: ${label}]`;
+      const marker = `[image #${++imageSerial}: ${label}]`;
+      if (href) images.push({ href, label, offset: output.length, length: marker.length });
+      output += marker;
     }
     else {
       stack.push({ node, end: true, pre });
