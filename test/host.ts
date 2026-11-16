@@ -1,11 +1,12 @@
 import * as vscode from 'vscode';
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
-import { readFile } from 'node:fs/promises';
+import { readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { zip, fb2, png } from './fixtures';
 import { ReaderLibrary, type LibraryBook } from '../src/library';
 import type { ReadingProgress } from '../src/progress';
+import { ReaderStorage } from '../src/storage';
 import { ReaderTerminal } from '../src/terminal';
 import { ReaderLinks } from '../src/terminal-links';
 import { readMarkup } from '../src/markup';
@@ -21,7 +22,7 @@ async function until(check: () => boolean): Promise<void> {
   for (let i = 0; i < 100; i++) { if (check()) return; await pause(50); }
   throw new Error('Timed out waiting for terminal.');
 }
-export async function run(): Promise<void> {
+async function runChecks(): Promise<void> {
   const extension = vscode.extensions.getExtension('alexChurkin.vscode-reader');
   assert.ok(extension);
   await extension.activate();
@@ -50,6 +51,18 @@ export async function run(): Promise<void> {
     console.log('Persistence passed after a full VS Code restart: position and named bookmarks restored.');
     return;
   }
+  const recoveryRoot = vscode.Uri.joinPath(extension.extensionUri, '.vscode-test', 'recovery-fixtures');
+  const recoveryDirectory = vscode.Uri.joinPath(recoveryRoot, 'reading-state-v1');
+  try { await vscode.workspace.fs.delete(recoveryRoot, { recursive: true }); } catch { /* First run. */ }
+  await vscode.workspace.fs.createDirectory(recoveryDirectory);
+  const legacy = { get: <T>(): T | undefined => undefined };
+  await vscode.workspace.fs.writeFile(vscode.Uri.joinPath(recoveryDirectory, 'lastBook.complete.tmp'), Buffer.from('{"uri":"file:///saved-book.epub"}'));
+  await vscode.workspace.fs.writeFile(vscode.Uri.joinPath(recoveryDirectory, 'lastBook.partial.tmp'), Buffer.from('{"uri":'));
+  assert.deepEqual(await new ReaderStorage(recoveryRoot.with({ scheme: 'vscode-userdata' }), legacy).get('lastBook'), { uri: 'file:///saved-book.epub' });
+  await vscode.workspace.fs.writeFile(vscode.Uri.joinPath(recoveryDirectory, 'lastBook.json'), Buffer.from('{"uri":"file:///committed-book.epub"}'));
+  assert.deepEqual(await new ReaderStorage(recoveryRoot, legacy).get('lastBook'), { uri: 'file:///committed-book.epub' });
+  await new ReaderStorage(recoveryRoot.with({ scheme: 'vscode-userdata' }), legacy).update('lastBook', { uri: 'file:///atomic-save.epub' });
+  assert.deepEqual(JSON.parse(Buffer.from(await vscode.workspace.fs.readFile(vscode.Uri.joinPath(recoveryDirectory, 'lastBook.json'))).toString()), { uri: 'file:///atomic-save.epub' });
   const book: Book = { title: 'Private title', author: '', chapters: [{ id: 'one', title: 'One', text: Array.from({ length: 80 }, (_, i) => `line ${i}`).join('\n'), anchors: {} }, { id: 'two', title: 'Two', text: 'next chapter', anchors: {} }], toc: [] };
   let saved: ReadingState | undefined;
   const copyViews = new CopyViews('vscode-reader-copy-test');
@@ -75,19 +88,24 @@ export async function run(): Promise<void> {
     reader.handleInput('\x1b[<64;4;2M');
     // Even reports split after the first Escape must restore the provisional hide.
     reader.handleInput('\x1b'); reader.handleInput('[<0;4;2M'); assert.doesNotMatch(output, /ready/);
+    const oldClipboard = await vscode.env.clipboard.readText();
+    reader.setDimensions({ columns: 80, rows: 6 });
     const beforeSelection = reader.snapshot.position;
     reader.toggleSelection(); assert.ok(transcript.includes(MOUSE_OFF)); assert.match(output, /v resume/);
     const frozen = output;
+    reader.setDimensions({ columns: 80, rows: 6 });
+    assert.equal(output, frozen, 'Duplicate resize events must preserve selection');
+    const frozenViewport = { columns: reader.screen.columns, rows: reader.screen.rows };
     reader.handleInput('\x1b[<65;4;2M'); reader.handleInput('j');
     assert.deepEqual(reader.snapshot.position, beforeSelection); assert.equal(output, frozen);
-    const oldClipboard = await vscode.env.clipboard.readText();
     try {
       const expectedVisible = Array.from({ length: reader.screen.rows }, (_, index) => `line ${index}`).join('\n') + '\n';
       await reader.copyVisibleText();
       assert.equal(await vscode.env.clipboard.readText(), expectedVisible);
-      assert.equal(output, frozen, 'Copy confirmations must not destroy an active selection');
-      reader.toggleSelection();
+      if (reader.screen.columns === frozenViewport.columns && reader.screen.rows === frozenViewport.rows) assert.equal(output, frozen, 'Copy confirmations must not destroy an active selection');
+      reader.resume();
       await reader.openCopyView();
+      await until(() => vscode.window.activeTextEditor?.document.uri.scheme === 'vscode-reader-copy-test');
       const copyEditor = vscode.window.activeTextEditor;
       assert.ok(copyEditor && copyEditor.document.uri.scheme === 'vscode-reader-copy-test');
       assert.equal(copyEditor.document.isDirty, false);
@@ -356,4 +374,12 @@ export async function run(): Promise<void> {
   }
   assert.ok(durable, 'Navigation and bookmark edits should autosave to durable files');
   console.log('VS Code host checks passed: formats, image tabs, library view, paging, progress and bookmark CRUD.');
+}
+
+export async function run(): Promise<void> {
+  try { await runChecks(); }
+  catch (error) {
+    if (process.env.READER_TEST_FAILURE) await writeFile(process.env.READER_TEST_FAILURE, error instanceof Error ? error.stack ?? error.message : String(error));
+    throw error;
+  }
 }

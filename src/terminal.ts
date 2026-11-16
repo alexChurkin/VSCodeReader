@@ -69,7 +69,7 @@ export class ReaderTerminal implements vscode.Pseudoterminal {
     this.exits.dispose();
   }
   setDimensions(dimensions: vscode.TerminalDimensions): void {
-    if (this.closed) return;
+    if (this.closed || (dimensions.columns === this.viewport.columns && dimensions.rows === this.viewport.rows)) return;
     this.selecting = false;
     this.resizeScreen(dimensions);
     this.draw();
