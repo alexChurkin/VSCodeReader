@@ -68,7 +68,7 @@ export async function readEpub(bytes: Uint8Array, signal?: AbortSignal): Promise
         } catch { /* External image references stay inert. */ }
       }
       const title = heading.title;
-      chapters.push({ id: path, title: title.slice(0, 200) || `Section ${chapters.length + 1}`, text: heading.text, anchors: heading.anchors, styles: heading.styles, paragraphs: heading.paragraphs, tables: heading.tables, imageMarkers: heading.markers, imageLinks });
+      chapters.push({ id: path, title: title.slice(0, 200) || `Section ${chapters.length + 1}`, text: heading.text, anchors: heading.anchors, styles: heading.styles, paragraphs: heading.paragraphs, indents: heading.indents, tables: heading.tables, imageMarkers: heading.markers, imageLinks });
     };
     const auxiliary: string[] = [];
     for (const itemref of elements(spine, 'itemref')) {

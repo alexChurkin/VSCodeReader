@@ -31,17 +31,19 @@ function lazyLine(source: string, start: number, length: number, base: number): 
   return { offset: base + start, get text() { return value ??= source.slice(start, start + length); } };
 }
 
-export function wrap(text: string, columns: number, firstLineIndent = 0): Line[] {
+export function wrap(text: string, columns: number, firstLineIndent = 0, continuationIndent = 0): Line[] {
   const width = Math.max(1, Math.floor(columns));
   const result: Line[] = [];
   const indent = Math.min(Math.max(0, Math.floor(firstLineIndent)), Math.max(0, width - 4));
+  const continuation = Math.min(Math.max(0, Math.floor(continuationIndent)), Math.max(0, width - 4));
   let available = width - indent, indented = false;
   const emit = (line: Line) => {
-    if (!indented && indent && line.text.length) {
-      indented = true;
-      result.push({ offset: line.offset, get text() { return ' '.repeat(indent) + line.text; }, runs: line.text.length ? [{ startIndex: indent, offset: line.offset, length: line.text.length }] : [] });
+    const padding = indented ? continuation : indent;
+    if (padding && line.text.length) {
+      result.push({ offset: line.offset, get text() { return ' '.repeat(padding) + line.text; }, runs: [{ startIndex: padding, offset: line.offset, length: line.text.length }] });
     } else result.push(line);
-    available = indented || !indent ? width : width - indent;
+    if (line.text.length) indented = true;
+    available = width - (indented ? continuation : indent);
   };
   const widths = new Map<string, number>();
   let base = 0;

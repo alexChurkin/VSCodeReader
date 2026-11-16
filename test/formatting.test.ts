@@ -4,7 +4,7 @@ import { readFile } from 'node:fs/promises';
 import stringWidth from 'string-width';
 import { readEpub } from '../src/epub';
 import { readFb2 } from '../src/fb2';
-import { readBook, extractImage } from '../src/formats';
+import { readBook, extractImage, readTxt } from '../src/formats';
 import { cleanPassage } from '../src/copy';
 import { readMarkup } from '../src/markup';
 import { Screen } from '../src/screen';
@@ -211,4 +211,112 @@ void test('Markdown playground retains nested lists, tasks, literal code, Setext
   assert.ok(styled(notes, 'bold note').some(span => span.bold));
   assert.match(notes.text, /Continued note text/);
   assert.ok(book.chapters.flatMap(chapter => chapter.footnotes ?? []).every(note => !JSON.stringify(note).includes('not-a-note')));
+});
+
+for (const format of ['html', 'epub']) {
+  void test(`${format} preserves hanging list layout, definitions, captions and aligned table source mappings`, async () => {
+    const source = (await readFile('samples/formatting.html')).toString();
+    const book = format === 'html' ? readMarkup(Buffer.from(source), 'formatting.html').book : await readEpub(epub(/<body>([\s\S]*)<\/body>/.exec(source)![1], /<style>([\s\S]*)<\/style>/.exec(source)![1]));
+    const chapter = book.chapters[0];
+    const screen = new Screen(book, '', { chapter: 0, offset: 0 }); screen.resize(60, 200);
+    assert.ok(styled(chapter, 'Source anchor').some(span => span.bold));
+    assert.ok(styled(chapter, 'Figure caption').some(span => span.italic));
+    assert.match(chapter.text, /III\. Countdown three/);
+    assert.match(chapter.text, /VII\. Reset seven/);
+    assert.match(chapter.text, /VI\. Countdown six/);
+    assert.match(chapter.text, /\n10\. Second outer/);
+    assert.match(chapter.text, /\nFigure caption/);
+    for (const width of [80, 40, 20, 8, 3]) {
+      screen.resize(width, 200);
+      for (const block of chapter.indents ?? []) {
+        const lines = screen.lines.filter(line => line.offset >= block.offset && line.offset < block.offset + block.length);
+        assert.ok(lines.length);
+        for (const [index, line] of lines.entries()) {
+          const indent = Math.min(index ? block.continuation : block.firstLine, Math.max(0, width - 1 - 4));
+          if (indent) assert.ok(line.text.startsWith(' '.repeat(indent)), `${width}: ${line.text}`);
+          for (const run of line.runs ?? []) assert.equal(line.text.slice(run.startIndex, run.startIndex + run.length), chapter.text.slice(run.offset, run.offset + run.length));
+        }
+      }
+      assertCellsSurvive(book, 0, width);
+    }
+    screen.resize(80, 200);
+    assert.match(strip(screen.render()), /\r\n {3}Outer item resumes/);
+    assert.match(strip(screen.render()), /\r\n {4}A definition/);
+    const offset = chapter.text.indexOf('bold nested text');
+    screen.go({ chapter: 0, offset });
+    const search = new BookSearch(book, 'bold nested text'); search.align({ chapter: 0, offset });
+    assert.match(screen.render(search.highlights(0)), /\x1b\[1;7mbold nested text/);
+    screen.go({ chapter: 0, offset: 0 });
+    assert.ok(strip(screen.render()).split('\r\n').some(line => screen.footnoteLinks(line).length));
+    const tableChapter = book.chapters.findIndex(item => item.tables?.length);
+    const grid = assertCellsSurvive(book, tableChapter, 100);
+    const amount = book.chapters[tableChapter].tables![0].rows[2].cells[1];
+    assert.equal(amount.align, 'right');
+    const amountLine = grid.lines.find(line => line.runs?.some(run => run.offset === amount.offset))!;
+    assert.match(amountLine.text, / +123\.45 \|/);
+    assert.ok(amountLine.runs!.find(run => run.offset === amount.offset)!.startIndex > 40);
+    const cards = assertCellsSurvive(book, tableChapter, 30);
+    assert.ok(cards.lines.some(line => line.text === 'Measures / Amount:'));
+    assert.ok(cards.lines.some(line => line.text === 'Measures / State:'));
+  });
+}
+
+void test('list numbering, loose tasks and headerless table labels retain their meaning', () => {
+  const { book } = readMarkup(Buffer.from('<ol start="0"><li>Zero</li><li value="-2">Negative</li><li>Next</li></ol><ol type="a" start="26"><li>Last letter</li><li>Two letters</li></ol><ul><li><p><input type="checkbox" checked>Loose task with enough words to wrap its content properly.</p></li></ul><table><tr><td>Alpha</td><td>Beta</td></tr><tr><td>Gamma</td><td>Delta</td></tr></table>'), 'a.html');
+  const chapter = book.chapters[0];
+  assert.match(chapter.text, /^0\. Zero/); assert.match(chapter.text, /-2\. Negative/); assert.match(chapter.text, /-1\. Next/);
+  assert.match(chapter.text, /z\. Last letter/); assert.match(chapter.text, /aa\. Two letters/);
+  assert.match(chapter.text, /\[x\] Loose task/);
+  const screen = new Screen(book, '', { chapter: 0, offset: 0 }); screen.resize(30, 100);
+  assert.ok(screen.lines.some(line => line.text === 'Column 1:'));
+  assert.ok(!screen.lines.some(line => line.text === 'Alpha:'));
+});
+
+void test('large list splits retain continuation indentation without injecting it into copied source', () => {
+  const { book } = readMarkup(Buffer.from('<h1>Long list</h1><ul><li>' + 'word '.repeat(30_000) + '</li></ul>'), 'large.html');
+  const chunks = book.chapters.filter(chapter => chapter.text.includes('word'));
+  assert.ok(chunks.length > 1);
+  assert.equal(chunks[0].indents![0].firstLine, 0);
+  assert.ok(chunks.slice(1).every(chapter => chapter.indents![0].firstLine === 2));
+  const index = book.chapters.indexOf(chunks[1]);
+  const screen = new Screen(book, '', { chapter: index, offset: 0 }); screen.resize(40, 20);
+  assert.match(screen.lines[0].text, /^ {2}\S/);
+  assert.doesNotMatch(cleanPassage(chunks[1]), /^ {2}/);
+  const nestedHeading = readMarkup(Buffer.from('<ol><li><h2>Heading inside a list</h2><p>Item paragraph.</p></li></ol>'), 'heading.html').book;
+  const headingChapter = nestedHeading.chapters.findIndex(chapter => chapter.text.startsWith('Heading inside'));
+  const headingScreen = new Screen(nestedHeading, '', { chapter: headingChapter, offset: 0 });
+  assert.equal(headingScreen.lines[0].text, 'Heading inside a list');
+});
+
+void test('FB2 embedded CSS styles named inline text and aligns cells without loading resources', async () => {
+  const source = (await readFile('samples/formatting.fb2')).toString();
+  const book = readFb2(Buffer.from(source));
+  const chapter = book.chapters[0];
+  assert.ok(styled(chapter, 'named style retains').some(span => span.underline));
+  assert.ok(styled(chapter, 'nested emphasis').some(span => span.underline && span.italic));
+  assert.ok(chapter.tables![0].rows[2].cells.every(cell => cell.align === 'right'));
+  assert.doesNotMatch(chapter.text, /text-align|text-decoration/);
+  const hostile = source.replace('.custom {', '@import url(https://example.com/never.css); @media print { p {display:none} } .custom {');
+  assert.deepEqual(readFb2(Buffer.from(hostile)), book);
+  for (const width of [100, 40, 20]) assertCellsSurvive(book, 0, width);
+});
+
+void test('TXT chapter recognition adds styled contents without changing source, chunks, copy text or locators', async () => {
+  const source = await readFile('samples/formatting.txt');
+  const enabled = readTxt(source, 'formatting.txt'), disabled = readTxt(source, 'formatting.txt', 'utf-8', false);
+  assert.deepEqual(enabled.chapters.map(chapter => chapter.text), disabled.chapters.map(chapter => chapter.text));
+  assert.deepEqual(enabled.toc.map(item => [item.title, item.depth]), [['Part I', 0], ['Chapter 1 — Beginning', 1], ['Chapter 2', 1], ['Часть II', 0], ['Глава 3 — Продолжение', 1], ['Эпилог', 0]]);
+  assert.equal(disabled.toc.length, 1); assert.equal(disabled.chapters[0].styles, undefined);
+  assert.equal(cleanPassage(enabled.chapters[0]), source.toString());
+  for (const item of enabled.toc) assert.equal(enabled.chapters[item.chapter].text.slice(item.offset, item.offset + item.title.length), item.title);
+  const screen = new Screen(enabled, '', { chapter: 0, offset: 0 }); screen.resize(80, 100);
+  assert.match(screen.render(), /\x1b\[1;4mChapter 1/);
+  const falsePositives = 'A sentence\nChapter 2 is mentioned here.\nMore text\n\n1. Numbered item\n\nMIX\n\n    diagram\n\nChapter\n1\n\nSplit line is not a heading.\n';
+  assert.equal(readTxt(Buffer.from(falsePositives), 'a.txt').chapters[0].styles, undefined);
+  const large = Buffer.from('word '.repeat(14_000) + '\n\nChapter 7\n\nBody.');
+  const book = readTxt(large, 'large.txt');
+  assert.equal(book.chapters.map(chapter => chapter.text).join(''), large.toString());
+  assert.ok(book.toc[0].chapter > 0); assert.equal(book.toc[0].title, 'Chapter 7');
+  const result = await readBook(source, { filename: 'a.txt', txtDetectHeadings: false });
+  assert.equal(result.kind, 'book'); if (result.kind === 'book') assert.equal(result.book.chapters[0].styles, undefined);
 });

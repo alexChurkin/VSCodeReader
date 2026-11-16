@@ -1,8 +1,8 @@
 import type { Element, ParentNode } from 'domhandler';
-import type { TextStyle } from './book';
+import type { TextStyle, TextAlign } from './book';
 
 export interface CssRule { selector: string; declarations: Record<string, string>; specificity: number; order: number }
-const allowed = new Set(['font-weight', 'font-style', 'font-size', 'font-variation-settings', 'text-decoration', 'text-decoration-line', 'white-space', 'text-indent', 'display', 'visibility']);
+const allowed = new Set(['font-weight', 'font-style', 'font-size', 'font-variation-settings', 'text-decoration', 'text-decoration-line', 'white-space', 'text-indent', 'text-align', 'display', 'visibility']);
 function declarations(source: string): Record<string, string> {
   const result: Record<string, string> = Object.create(null);
   for (const declaration of source.split(';')) {
@@ -55,6 +55,7 @@ function simpleMatch(node: Element, selector: string): boolean {
   const parts = selector.match(/^[\p{L}\p{N}_*-]+|[.#][\p{L}\p{N}_-]+/gu);
   if (!parts || parts.join('') !== selector) return false;
   const classes = new Set((node.attribs.class ?? '').split(/\s+/));
+  if (node.name.split(':').at(-1)?.toLowerCase() === 'style' && node.attribs.name) classes.add(node.attribs.name);
   return parts.every(part => part[0] === '.' ? classes.has(part.slice(1)) : part[0] === '#' ? node.attribs.id === part.slice(1) : part === '*' || node.name.split(':').at(-1)?.toLowerCase() === part.toLowerCase());
 }
 function matches(node: Element, selector: string): boolean {
@@ -77,13 +78,13 @@ function matches(node: Element, selector: string): boolean {
   }
   return true;
 }
-export interface Presentation extends TextStyle { listItem: boolean; hanging: boolean; quote: number; scale: number; pre: boolean; hidden: boolean; heading: number }
+export interface Presentation extends TextStyle { listItem: boolean; hanging: boolean; quote: number; scale: number; pre: boolean; hidden: boolean; heading: number; align?: TextAlign }
 export const plainPresentation: Presentation = { listItem: false, hanging: false, quote: 0, scale: 1, pre: false, hidden: false, heading: 0 };
 export function presentation(node: Element, inherited: Presentation, rules: CssRule[], fb2: boolean): Presentation {
   const tag = node.name.split(':').at(-1)!.toLowerCase();
   const style = { ...inherited };
-  if (['b', 'strong', 'th', 'caption'].includes(tag)) style.bold = true;
-  if (['i', 'em', 'cite'].includes(tag)) style.italic = true;
+  if (['b', 'strong', 'th', 'caption', 'dt'].includes(tag)) style.bold = true;
+  if (['i', 'em', 'cite', 'figcaption'].includes(tag)) style.italic = true;
   if (['u', 'ins'].includes(tag)) style.underline = true;
   if (['s', 'del', 'strike'].includes(tag)) style.strike = true;
   if (fb2 && tag === 'emphasis') style.italic = true;
@@ -102,6 +103,8 @@ export function presentation(node: Element, inherited: Presentation, rules: CssR
   for (const rule of rules) if (matches(node, rule.selector)) apply(rule.declarations, rule.specificity * 5001 + rule.order);
   apply(declarations(node.attribs.style ?? ''), 5_000_000);
   const get = (name: string) => values.get(name)?.value;
+  const align = get('text-align') ?? node.attribs.align?.toLowerCase();
+  if (align === 'left' || align === 'center' || align === 'right') style.align = align;
   const weight = get('font-weight');
   if (weight) style.bold = /bold/.test(weight) || Number(weight) >= 600;
   const italic = get('font-style'); if (italic) style.italic = /italic|oblique/.test(italic);

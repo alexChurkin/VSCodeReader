@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"/>
+  <title>Structured formatting playground</title>
+  <style>
+    .amount { text-align: right; }
+    .middle { text-align: center; }
+  </style>
+</head>
+<body>
+  <h1>Lists and definitions</h1>
+  <p>Ordinary prose keeps its first-line indent.</p>
+  <ol start="9">
+    <li>Long outer item with enough words to wrap across several lines while keeping its continuation aligned with the content after the number.
+      <ul><li>Nested item with <strong>bold nested text</strong>, more words for wrapping, a <a href="#note">[n]</a> and an <img src="formatting.png" alt="Pixel"/>.</li></ul>
+      <p>Outer item resumes after its nested list. This paragraph must retain the outer indentation.</p>
+    </li>
+    <li>Second outer item spans two digits in its marker.</li>
+  </ol>
+  <ol reversed="reversed" type="I"><li>Countdown three.</li><li value="7">Reset seven.</li><li>Countdown six.</li></ol>
+  <dl>
+    <dt>Source anchor</dt>
+    <dd>A definition with enough words to wrap across several lines; its hanging indentation is display-only.</dd>
+  </dl>
+  <figure>
+    <img src="formatting.png" alt="Pixel"/>
+    <figcaption>Figure caption stays separate from the prose and is italic.</figcaption>
+  </figure>
+  <hr/>
+  <h2>Aligned tables</h2>
+  <table>
+    <caption>Quarterly results</caption>
+    <tr><th rowspan="2">Name</th><th colspan="2">Measures</th></tr>
+    <tr><th class="amount">Amount</th><th class="middle">State</th></tr>
+    <tr><td>中文 👩‍💻</td><td class="amount">123.45</td><td class="middle">Ready</td></tr>
+    <tr><td>Second</td><td class="amount"><strong>7</strong></td><td class="middle"><a href="#note">[n]</a></td></tr>
+  </table>
+  <h2 id="note">Footnote</h2>
+  <p>Note body.</p>
+</body>
+</html>

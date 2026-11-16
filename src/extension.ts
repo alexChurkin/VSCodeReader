@@ -147,7 +147,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         if (token.isCancellationRequested) throw new vscode.CancellationError();
         const hash = fingerprint(bytes);
         const config = vscode.workspace.getConfiguration('vscodeReader');
-        const options: ReadOptions = { filename: uri.path, documentPath: uri.scheme === 'file' ? uri.fsPath : undefined, entry: saved?.entry, encoding: saved?.encoding ?? config.get<TextEncoding>('textEncoding', 'utf-8') };
+        const options: ReadOptions = { filename: uri.path, documentPath: uri.scheme === 'file' ? uri.fsPath : undefined, entry: saved?.entry, encoding: saved?.encoding ?? config.get<TextEncoding>('textEncoding', 'utf-8'), txtDetectHeadings: config.get<boolean>('txtDetectHeadings', true) };
         let result = await runWorker<BookResult>({ bytes, ...options }, workerPath, token);
         if (result.kind === 'selection') {
           const selected = await vscode.window.showQuickPick(result.entries.map(entry => ({ label: safeText(entry), entry })), { title: 'Choose a book from the archive' });

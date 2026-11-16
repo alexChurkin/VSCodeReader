@@ -1,6 +1,8 @@
 export interface TextStyle { bold?: boolean; italic?: boolean; underline?: boolean; strike?: boolean }
 export interface StyleSpan extends TextStyle { offset: number; length: number }
-export interface TableCell { offset: number; length: number; column: number; colSpan: number; rowSpan: number; header: boolean }
+export type TextAlign = 'left' | 'center' | 'right';
+export interface TableCell { offset: number; length: number; column: number; colSpan: number; rowSpan: number; header: boolean; align?: TextAlign }
+export interface IndentedBlock { offset: number; length: number; firstLine: number; continuation: number }
 export interface TableRow { offset: number; end: number; cells: TableCell[] }
 export interface BookTable { offset: number; length: number; columns: number; rows: TableRow[]; caption?: { offset: number; length: number } }
 export interface FootnoteReference { id: string; offset: number; length: number; label: string; target: Locator }
@@ -13,6 +15,7 @@ export interface Chapter {
   anchors: Record<string, number>;
   styles?: StyleSpan[];
   paragraphs?: Array<{ offset: number; length: number }>;
+  indents?: IndentedBlock[];
   tables?: BookTable[];
   imageLinks?: ChapterImageLink[];
   imageMarkers?: ImageMarker[];

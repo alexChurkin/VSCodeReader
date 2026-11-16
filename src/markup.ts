@@ -62,6 +62,10 @@ export function readMarkup(bytes: Uint8Array, filename: string, encoding: TextEn
       starts.push(start);
       chapters.push({ id: `section-${chapters.length}`, title: part ? `${label} (${part + 1})` : label, text: rendered.text.slice(start, stop), anchors,
         paragraphs: rendered.paragraphs.filter(paragraph => paragraph.offset >= start && paragraph.offset < stop).map(paragraph => ({ offset: paragraph.offset - start, length: Math.min(paragraph.length, stop - paragraph.offset) })),
+        indents: rendered.indents.flatMap(block => {
+          const offset = Math.max(block.offset, start), finish = Math.min(block.offset + block.length, stop);
+          return finish > offset ? [{ ...block, offset: offset - start, length: finish - offset, firstLine: offset > block.offset ? block.continuation : block.firstLine }] : [];
+        }),
         styles: rendered.styles.flatMap(style => {
           const offset = Math.max(style.offset, start), finish = Math.min(style.offset + style.length, stop);
           return finish > offset ? [{ ...style, offset: offset - start, length: finish - offset }] : [];

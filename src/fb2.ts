@@ -6,6 +6,7 @@ import { type Book, type Chapter, type TocItem, type BookImage, safeText } from 
 import { decodeXml } from './encoding';
 import { isRasterMediaType } from './images';
 import { xml, elements, isElement, localName, content, renderNodes } from './xml';
+import { cssRules } from './presentation';
 
 const children = (node: Element, tag: string) => node.children.filter(isElement).filter(n => localName(n.name) === tag);
 export function fb2Document(bytes: Uint8Array) {
@@ -23,14 +24,15 @@ export function readFb2(bytes: Uint8Array): Book {
   const chapters: Chapter[] = [], toc: TocItem[] = [];
   const images: BookImage[] = elements(root, 'binary').filter(b => b.attribs.id && isRasterMediaType(b.attribs['content-type'])).map(b => ({ id: b.attribs.id, label: safeText(b.attribs.id), mediaType: b.attribs['content-type'], chapters: [] }));
   const references: LinkReference[][] = [];
+  const rules = children(root, 'stylesheet').filter(node => node.attribs.type?.toLowerCase() === 'text/css').flatMap(node => cssRules(content(node).slice(0, 1024 * 1024))).slice(0, 5000).map((rule, order) => ({ ...rule, order }));
   let serial = 0;
   const addChapter = (nodes: Element[], label: string) => {
     const sections = nodes.flatMap(n => localName(n.name) === 'section' ? [n, ...elements(n, 'section')] : []);
     for (const section of sections) section.attribs.id ||= `__vscode_reader_section_${serial++}`;
-    const rendered = renderNodes(nodes, true);
+    const rendered = renderNodes(nodes, true, true, rules);
     const index = chapters.length;
     references.push(rendered.links);
-    chapters.push({ id: `body-${index}`, title: safeText(label), text: rendered.text, anchors: rendered.anchors, styles: rendered.styles, paragraphs: rendered.paragraphs, tables: rendered.tables, imageMarkers: rendered.markers, imageLinks: [] });
+    chapters.push({ id: `body-${index}`, title: safeText(label), text: rendered.text, anchors: rendered.anchors, styles: rendered.styles, paragraphs: rendered.paragraphs, indents: rendered.indents, tables: rendered.tables, imageMarkers: rendered.markers, imageLinks: [] });
     if (!sections.length) toc.push({ title: label, chapter: index, offset: 0, depth: 0 });
     for (const section of sections) {
       let depth = 0, parent = section.parent;

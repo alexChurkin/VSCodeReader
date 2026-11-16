@@ -1,0 +1,29 @@
+Plain text playground
+
+Part I
+
+Chapter 1 — Beginning
+
+This text retains its original line breaks.
+This is still a separate source line.
+
+    Poetry and indentation stay intact.
+        More indentation stays intact too.
+
++---------+
+| diagram |
++---------+
+
+Chapter 2
+
+Another chapter with a short paragraph.
+
+Часть II
+
+Глава 3 — Продолжение
+
+Исходные строки, пробелы и позиции сохраняются.
+
+Эпилог
+
+The end.

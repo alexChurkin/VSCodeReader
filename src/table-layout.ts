@@ -12,6 +12,18 @@ function tableLines(chapter: Chapter, table: BookTable, width: number): Line[] {
   const grid = inner >= 12 && table.columns <= 16;
   const border = grid ? '+' + Array.from({ length: table.columns }, () => '-'.repeat(inner + 2)).join('+') + '+' : '-'.repeat(Math.min(width, 32));
   const decoration = (text: string, offset: number) => result.push({ text, offset, runs: [], tableOffset: table.offset, sourceStart: offset, sourceEnd: offset });
+  const firstDataRow = grid ? 0 : table.rows.findIndex(row => row.cells.some(cell => !cell.header));
+  const headers = grid ? [] : table.rows.slice(0, firstDataRow < 0 ? table.rows.length : firstDataRow).flatMap(row => row.cells);
+  const columnLabels = new Map<number, string>();
+  const columnLabel = (column: number) => {
+    let label = columnLabels.get(column);
+    if (label === undefined) {
+      const labels = headers.filter(header => header.header && header.length && header.column <= column && header.column + header.colSpan > column).map(header => chapter.text.slice(header.offset, header.offset + header.length).replace(/\s+/g, ' '));
+      label = labels.length ? [...new Set(labels)].join(' / ') : `Column ${column + 1}`;
+      columnLabels.set(column, label);
+    }
+    return label;
+  };
   if (table.caption?.length) {
     for (const line of wrap(chapter.text.slice(table.caption.offset, table.caption.offset + table.caption.length), width)) result.push({ text: line.text, offset: table.caption.offset + line.offset, runs: [{ startIndex: 0, offset: table.caption.offset + line.offset, length: line.text.length }], tableOffset: table.offset, sourceStart: table.caption.offset, sourceEnd: table.caption.offset + table.caption.length });
   }
@@ -31,9 +43,11 @@ function tableLines(chapter: Chapter, table: BookTable, width: number): Line[] {
         let text = '|'; const runs: SourceRun[] = [];
         for (const cell of cells) {
           const line = cell.lines[lineIndex];
-          text += ' ';
+          const padding = Math.max(0, cell.width - stringWidth(line?.text ?? ''));
+          const leading = cell.cell?.align === 'right' ? padding : cell.cell?.align === 'center' ? Math.floor(padding / 2) : 0;
+          text += ' '.repeat(1 + leading);
           if (line?.text) runs.push({ startIndex: text.length, offset: line.offset, length: line.text.length });
-          text += (line?.text ?? '') + ' '.repeat(Math.max(0, cell.width - stringWidth(line?.text ?? ''))) + ' |';
+          text += (line?.text ?? '') + ' '.repeat(padding - leading) + ' |';
         }
         const anchors = cells.flatMap(cell => cell.lines[lineIndex] ? [cell.lines[lineIndex].offset] : []);
         result.push({ text, offset: anchors.length ? Math.min(...anchors) : row.offset, runs, tableOffset: table.offset, sourceStart: row.offset, sourceEnd: row.end });
@@ -43,8 +57,7 @@ function tableLines(chapter: Chapter, table: BookTable, width: number): Line[] {
       const title = `Row ${rowIndex + 1}`;
       for (const line of wrap(title, width)) decoration(line.text, row.offset);
       for (const cell of row.cells) {
-        const heading = table.rows[0].cells.find(header => header.column === cell.column);
-        const label = rowIndex > 0 && heading?.length ? chapter.text.slice(heading.offset, heading.offset + heading.length).replace(/\s+/g, ' ') : `Column ${cell.column + 1}`;
+        const label = rowIndex > 0 ? columnLabel(cell.column) : `Column ${cell.column + 1}`;
         for (const line of wrap(label + ':', width)) decoration(line.text, cell.offset);
         const indent = width >= 4 ? '  ' : '';
         for (const line of cellLines(chapter, cell, width - indent.length)) result.push({ text: indent + line.text, offset: line.offset, runs: line.text ? [{ startIndex: indent.length, offset: line.offset, length: line.text.length }] : [], tableOffset: table.offset, sourceStart: row.offset, sourceEnd: row.end });
@@ -58,14 +71,15 @@ function tableLines(chapter: Chapter, table: BookTable, width: number): Line[] {
 export function layoutChapter(chapter: Chapter, width: number): Line[] {
   const blocks = [
     ...(chapter.tables ?? []).filter(table => table.rows.length).map(table => ({ offset: table.offset, length: table.length, table })),
-    ...(chapter.paragraphs ?? []).map(paragraph => ({ ...paragraph, table: undefined })),
+    ...(chapter.paragraphs ?? []).map(paragraph => ({ ...paragraph, table: undefined, firstLine: 4, continuation: 0 })),
+    ...(chapter.indents ?? []).map(block => ({ ...block, table: undefined })),
   ].sort((a, b) => a.offset - b.offset);
   if (!blocks.length) return wrap(chapter.text, width);
   const lines: Line[] = [];
-  const append = (start: number, end: number, indent = 0) => {
+  const append = (start: number, end: number, indent = 0, continuation = 0) => {
     if (end <= start) return;
     const text = chapter.text.slice(start, end);
-    const wrapped = wrap(text, width, indent);
+    const wrapped = wrap(text, width, indent, continuation);
     if (lines.length && text.startsWith('\n') && start > 0 && chapter.text[start - 1] !== '\n') wrapped.shift();
     if (end < chapter.text.length && text.endsWith('\n')) wrapped.pop();
     for (const line of wrapped) lines.push({
@@ -78,7 +92,7 @@ export function layoutChapter(chapter: Chapter, width: number): Line[] {
     if (block.offset < cursor) continue;
     append(cursor, block.offset);
     if (block.table) for (const line of tableLines(chapter, block.table, width)) lines.push(line);
-    else append(block.offset, block.offset + block.length, 4);
+    else append(block.offset, block.offset + block.length, block.firstLine, block.continuation);
     cursor = block.offset + block.length;
   }
   append(cursor, chapter.text.length);

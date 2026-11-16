@@ -2,7 +2,8 @@ import { parseDocument } from 'htmlparser2';
 import type { Element, AnyNode } from 'domhandler';
 import { XMLValidator } from 'fast-xml-parser';
 import { cssRules, presentation, plainPresentation, type CssRule, type Presentation } from './presentation';
-import { safeText, type ImageMarker, type StyleSpan, type BookTable, type TableCell, type TableRow } from './book';
+import { safeText, type ImageMarker, type StyleSpan, type BookTable, type TableCell, type TableRow, type IndentedBlock } from './book';
+import { listIndents, listMarker, listNumber, type ListRange } from './lists';
 
 export function localName(name: string): string { return name.split(':').at(-1)!.toLowerCase(); }
 export function isElement(node: AnyNode): node is Element { return 'name' in node && 'attribs' in node; }
@@ -51,11 +52,11 @@ export function documentText(doc: { children: AnyNode[] }, rules: CssRule[] = []
   return { ...rendered, title: rendered.headings[0]?.title || title };
 }
 export interface HeadingReference { title: string; level: number; offset: number }
-export function renderNodes(nodes: AnyNode[], fb2 = false, markup = false, rules: CssRule[] = []): { text: string; anchors: Record<string, number>; images: ImageReference[]; markers: ImageMarker[]; links: LinkReference[]; headings: HeadingReference[]; styles: StyleSpan[]; tables: BookTable[]; paragraphs: Array<{ offset: number; length: number }> } {
+export function renderNodes(nodes: AnyNode[], fb2 = false, markup = false, rules: CssRule[] = []): { text: string; anchors: Record<string, number>; images: ImageReference[]; markers: ImageMarker[]; links: LinkReference[]; headings: HeadingReference[]; styles: StyleSpan[]; tables: BookTable[]; paragraphs: Array<{ offset: number; length: number }>; indents: IndentedBlock[] } {
   markup ||= fb2;
   // FB2 <style name="…"> contains readable inline text, unlike HTML <style>.
   const ignored = new Set(['script', fb2 ? 'stylesheet' : 'style', 'head', 'iframe', 'object', 'embed', 'form', 'svg', 'audio', 'video']);
-  const blocks = new Set([...(fb2 ? ['title', 'subtitle', 'epigraph', 'annotation', 'poem', 'stanza', 'v', 'cite', 'text-author'] : []), 'p', 'div', 'section', 'article', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'li', 'blockquote', 'pre', 'caption', 'tr', 'dt', 'dd']);
+  const blocks = new Set([...(fb2 ? ['title', 'subtitle', 'epigraph', 'annotation', 'poem', 'stanza', 'v', 'cite', 'text-author'] : []), 'p', 'div', 'section', 'article', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'li', 'blockquote', 'pre', 'caption', 'tr', 'dl', 'dt', 'dd', 'figure', 'figcaption']);
   let output = '';
   let imageSerial = 0;
   const anchors: Record<string, number> = Object.create(null);
@@ -82,6 +83,7 @@ export function renderNodes(nodes: AnyNode[], fb2 = false, markup = false, rules
     else styles.push({ offset, length: text.length, bold: style.bold, italic: style.italic, underline: style.underline, strike: style.strike });
   };
   const listCounters = new Map<AnyNode, number>();
+  const listRanges: ListRange[] = [], listNodes = new Map<AnyNode, ListRange>();
   const boundary = (lines = 2) => { if (output && !output.endsWith('\n')) output += '\n'.repeat(lines); };
   const stack: Array<{ node: AnyNode; end?: boolean; pre?: boolean; inherited: Presentation; resolved?: Presentation }> = [...nodes].reverse().map(node => ({ node, inherited: plainPresentation }));
   while (stack.length) {
@@ -111,6 +113,7 @@ export function renderNodes(nodes: AnyNode[], fb2 = false, markup = false, rules
     }
     if ((markup && ['template', 'noscript', 'button', 'select', 'textarea', 'input'].includes(tag)) || ignored.has(tag)) continue;
     if (end) {
+      const list = listNodes.get(node); if (list) list.end = output.length;
       const paragraphStart = paragraphStarts.get(node);
       if (paragraphStart !== undefined) {
         let prose = '', cursor = paragraphStart;
@@ -166,7 +169,7 @@ export function renderNodes(nodes: AnyNode[], fb2 = false, markup = false, rules
         const span = (value: string | undefined) => Math.max(1, Math.min(32, Number.parseInt(value ?? '1', 10) || 1));
         const colSpan = span(node.attribs.colspan), rowSpan = span(node.attribs.rowspan);
         while (Array.from({ length: colSpan }, (_, index) => (occupied[column + index] ?? 0) >= table.rows.length).some(Boolean)) column++;
-        const cell: TableCell = { offset: output.length, length: 0, column, colSpan, rowSpan, header: tag === 'th' };
+        const cell: TableCell = { offset: output.length, length: 0, column, colSpan, rowSpan, header: tag === 'th', align: style.align };
         for (let col = column; col < column + colSpan; col++) occupied[col] = table.rows.length + rowSpan - 1;
         row.cells.push(cell); cellNodes.set(node, cell); table.columns = Math.max(table.columns, column + colSpan);
       }
@@ -175,6 +178,10 @@ export function renderNodes(nodes: AnyNode[], fb2 = false, markup = false, rules
     if (heading) {
       boundary();
       headings.push({ title: content(node) || 'Section', level: style.heading, offset: output.length });
+      if (inherited.listItem) {
+        const range = { offset: output.length, end: 0, firstLine: 0, continuation: 0 };
+        listRanges.push(range); listNodes.set(node, range);
+      }
     }
     if (tag === 'p' && !style.listItem && !style.heading && !style.quote && !style.pre && !style.hanging && !tableStack.length) {
       const visibleChildren = node.children.filter(child => child.type !== 'text' || child.data.trim());
@@ -193,13 +200,21 @@ export function renderNodes(nodes: AnyNode[], fb2 = false, markup = false, rules
     if (tag === 'li') {
       const parent = node.parent;
       const ordered = parent && isElement(parent) && localName(parent.name) === 'ol';
-      const count = parent ? listCounters.get(parent) ?? (ordered ? Math.max(1, Math.min(1_000_000, Number(parent.attribs.start) || 1)) : 1) : 1;
-      if (parent) listCounters.set(parent, count + 1);
-      const checkbox = node.children.find(child => isElement(child) && localName(child.name) === 'input' && child.attribs.type === 'checkbox');
+      const reversed = ordered && parent.attribs.reversed !== undefined;
+      const initial = ordered ? listNumber(parent.attribs.start, reversed ? parent.children.filter(child => isElement(child) && localName(child.name) === 'li').length : 1) : 1;
+      const count = listNumber(node.attribs.value, parent ? listCounters.get(parent) ?? initial : 1);
+      if (parent) listCounters.set(parent, count + (reversed ? -1 : 1));
+      const checkbox = node.children.flatMap(child => isElement(child) && localName(child.name) === 'p' ? child.children : [child]).find(child => isElement(child) && localName(child.name) === 'input' && child.attribs.type === 'checkbox');
       let depth = 0, ancestor = node.parent;
       while (ancestor && 'name' in ancestor) { if (['ol', 'ul'].includes(localName(ancestor.name))) depth++; ancestor = ancestor.parent; }
-      output += '  '.repeat(Math.min(8, Math.max(0, depth - 1)));
-      output += checkbox && isElement(checkbox) ? (checkbox.attribs.checked !== undefined ? '[x] ' : '[ ] ') : ordered ? `${count}. ` : '- ';
+      const prefix = '  '.repeat(Math.min(8, Math.max(0, depth - 1))) + (checkbox && isElement(checkbox) ? (checkbox.attribs.checked !== undefined ? '[x] ' : '[ ] ') : ordered ? `${listMarker(count, node.attribs.type ?? parent.attribs.type)}. ` : '- ');
+      const range = { offset: output.length, end: 0, firstLine: 0, continuation: prefix.length };
+      listRanges.push(range); listNodes.set(node, range);
+      output += prefix;
+    }
+    if (tag === 'dd') {
+      const range = { offset: output.length, end: 0, firstLine: 4, continuation: 4 };
+      listRanges.push(range); listNodes.set(node, range);
     }
     if (tag === 'hr') { boundary(); output += '---\n\n'; }
     if (node.attribs.id || (tag === 'a' && node.attribs.name)) anchors[node.attribs.id || node.attribs.name] = output.length;
@@ -220,5 +235,5 @@ export function renderNodes(nodes: AnyNode[], fb2 = false, markup = false, rules
     }
   }
   // Keep anchor offsets valid: no global trim/collapse after collecting them.
-  return { text: output || '[empty chapter]', anchors, images, markers, links, headings, styles, tables, paragraphs };
+  return { text: output || '[empty chapter]', anchors, images, markers, links, headings, styles, tables, paragraphs, indents: listRanges.length ? listIndents(output, listRanges) : [] };
 }

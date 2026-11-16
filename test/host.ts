@@ -11,6 +11,7 @@ import { ReaderTerminal } from '../src/terminal';
 import { ReaderLinks } from '../src/terminal-links';
 import { readMarkup } from '../src/markup';
 import { readFb2 } from '../src/fb2';
+import { readBook } from '../src/formats';
 import { previewImage } from '../src/image-preview';
 import { CopyViews } from '../src/copy-view';
 import { MOUSE_ON, MOUSE_OFF } from '../src/mouse';
@@ -266,30 +267,51 @@ async function runChecks(): Promise<void> {
     const source = rich.snapshot.position;
     rich.setDimensions({ columns: 100, rows: 60 }); assert.deepEqual(rich.snapshot.position, source);
   } finally { rich.close(); richTerminal.dispose(); richOutputSubscription.dispose(); richCancellation.dispose(); }
-  for (const format of ['fb2', 'md']) {
+  for (const format of ['fb2', 'md', 'html', 'txt']) {
     const bytes: Buffer = await readFile(join(extension.extensionPath, 'samples', `formatting.${format}`));
-    const book: Book = format === 'fb2' ? readFb2(bytes) : readMarkup(bytes, 'formatting.md').book;
+    const result = await readBook(bytes, { filename: `formatting.${format}` });
+    assert.equal(result.kind, 'book'); if (result.kind !== 'book') continue;
+    const book: Book = result.book;
     const reader: ReaderTerminal = new ReaderTerminal(book, '', restoreState(undefined, book), () => {}, async () => {});
     let frame = '';
     const subscription = reader.onDidWrite(value => { frame = value; });
     const terminal = vscode.window.createTerminal({ name: `formatting-${format}`, pty: reader });
     const cancellation = new vscode.CancellationTokenSource();
     try {
-      terminal.show(); await until(() => frame.includes('Formatting playground'));
+      terminal.show(); await until(() => frame.includes(format === 'html' ? 'Lists and definitions' : format === 'txt' ? 'Plain text playground' : 'Formatting playground'));
       reader.setDimensions({ columns: 120, rows: 150 });
-      assert.match(frame, /\x1b\[1;4mFormatting playground/);
-      assert.match(frame, /\x1b\[1;3mmixed emphasis/);
-      assert.match(frame, /\x1b\[9mdeleted words/);
-      assert.match(frame.replace(/\x1b\[[0-9;]*[A-Za-z]/g, ''), /\r\n {4}Ordinary paragraph/);
+      if (format === 'txt') {
+        assert.match(frame, /\x1b\[1;4mChapter 1/);
+        assert.equal(book.toc[1].title, 'Chapter 1 — Beginning');
+        reader.goTo(book.toc[1]);
+        const position = reader.snapshot.position;
+        reader.setDimensions({ columns: 30, rows: 150 }); assert.deepEqual(reader.snapshot.position, position);
+        continue;
+      }
+      if (format === 'html') {
+        assert.match(frame, /\x1b\[1;4mLists and definitions/);
+        assert.match(frame, /\x1b\[1mSource anchor/);
+        assert.match(frame, /\x1b\[3mFigure caption/);
+        reader.setDimensions({ columns: 60, rows: 150 });
+        assert.match(frame.replace(/\x1b\[[0-9;]*[A-Za-z]/g, ''), /\r\n {3}Outer item resumes/);
+        reader.setDimensions({ columns: 120, rows: 150 });
+      } else {
+        assert.match(frame, /\x1b\[1;4mFormatting playground/);
+        assert.match(frame, /\x1b\[1;3mmixed emphasis/);
+        assert.match(frame, /\x1b\[9mdeleted words/);
+        assert.match(frame.replace(/\x1b\[[0-9;]*[A-Za-z]/g, ''), /\r\n {4}Ordinary paragraph/);
+      }
       if (format === 'fb2') assert.match(frame, /named style retains/);
       const tableChapter = book.chapters.findIndex(item => item.tables?.length);
       reader.goTo({ chapter: tableChapter, offset: book.chapters[tableChapter].tables![0].offset });
       assert.match(frame, /\+---/);
-      assert.match(frame, /\x1b\[1mBold cell/);
-      assert.match(frame, /\x1b\[3mItalic cell/);
+      if (format !== 'html') {
+        assert.match(frame, /\x1b\[1mBold cell/);
+        assert.match(frame, /\x1b\[3mItalic cell/);
+      } else assert.match(frame, / +123\.45 \|/);
       const provider = new ReaderLinks(candidate => candidate === terminal ? reader : undefined);
       const links = frame.replace(/\x1b\[[0-9;]*[A-Za-z]/g, '').split('\r\n').flatMap(line => provider.provideTerminalLinks({ terminal, line }, cancellation.token));
-      assert.ok(links.some(link => link.kind === 'image'));
+      if (format !== 'html') assert.ok(links.some(link => link.kind === 'image'));
       const reference = links.find(link => link.kind === 'footnote'); assert.ok(reference);
       const position = reader.snapshot.position;
       await provider.handleTerminalLink(reference); assert.notDeepEqual(reader.snapshot.position, position);

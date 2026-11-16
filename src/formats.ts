@@ -2,18 +2,19 @@ import { isMarkup, readMarkup, embeddedImage } from './markup';
 import { readLocalImage } from './local-images';
 import { posix } from 'node:path';
 import { Archive, LIMITS, archivePath } from './archive';
-import { type Book, safeText } from './book';
+import { type Book, type Chapter, type TocItem, safeText } from './book';
+import { txtHeadings } from './txt-headings';
 import { decodeText, type TextEncoding } from './encoding';
 import { readEpub } from './epub';
 import { readFb2, fb2Image } from './fb2';
 import { validateImage, type ImageData } from './images';
 
-export interface ReadOptions { filename: string; entry?: string; encoding?: TextEncoding; documentPath?: string }
+export interface ReadOptions { filename: string; entry?: string; encoding?: TextEncoding; documentPath?: string; txtDetectHeadings?: boolean }
 export interface WorkerRequest extends ReadOptions { bytes: Uint8Array; action?: 'book' | 'image'; imageId?: string }
 export type BookResult = { kind: 'book'; book: Book; entry?: string } | { kind: 'selection'; entries: string[] };
 export const supportedBook = (path: string) => /\.(?:epub|fb2|fb2\.zip|fbz|txt|cbz|html?|md|markdown)$/i.test(path);
 
-export function readTxt(bytes: Uint8Array, filename: string, encoding: TextEncoding = 'utf-8'): Book {
+export function readTxt(bytes: Uint8Array, filename: string, encoding: TextEncoding = 'utf-8', detectHeadings = true): Book {
   if (bytes.length > LIMITS.text) throw new Error('TXT exceeds the 32 MiB document limit.');
   const text = safeText(decodeText(bytes, encoding));
   if (!text.trim()) throw new Error('Text document is empty.');
@@ -28,8 +29,19 @@ export function readTxt(bytes: Uint8Array, filename: string, encoding: TextEncod
     chunks.push(text.slice(start, end)); start = end;
   }
   const title = safeText(posix.basename(filename));
-  const chapters = chunks.map((chunk, index) => ({ id: `text-${index}`, title: chunks.length === 1 ? title : `Part ${index + 1}`, text: chunk, anchors: {} }));
-  return { title, author: '', chapters, toc: chapters.map((c, chapter) => ({ title: c.title, chapter, offset: 0, depth: 0 })), images: [] };
+  const chapters: Chapter[] = chunks.map((chunk, index) => ({ id: `text-${index}`, title: chunks.length === 1 ? title : `Part ${index + 1}`, text: chunk, anchors: {} }));
+  const headings = detectHeadings ? txtHeadings(text) : [];
+  const toc: TocItem[] = [];
+  let base = 0, next = 0;
+  for (const [chapter, item] of chapters.entries()) {
+    while (next < headings.length && headings[next].offset < base + item.text.length) {
+      const heading = headings[next++], offset = heading.offset - base;
+      (item.styles ??= []).push({ offset, length: heading.length, bold: true, underline: true });
+      toc.push({ title: heading.title, chapter, offset, depth: heading.depth });
+    }
+    base += item.text.length;
+  }
+  return { title, author: '', chapters, toc: toc.length ? toc : chapters.map((c, chapter) => ({ title: c.title, chapter, offset: 0, depth: 0 })), images: [] };
 }
 async function zippedFb2(bytes: Uint8Array, entry?: string): Promise<{ bytes: Uint8Array; entry: string } | { entries: string[] }> {
   const archive = await Archive.open(bytes);
@@ -67,7 +79,7 @@ export async function readBook(bytes: Uint8Array, options: ReadOptions): Promise
   }
   if (name.endsWith('.fb2')) return { kind: 'book', book: readFb2(bytes) };
   if (isMarkup(name)) return { kind: 'book', book: readMarkup(bytes, options.filename, options.encoding).book };
-  if (name.endsWith('.txt')) return { kind: 'book', book: readTxt(bytes, options.filename, options.encoding) };
+  if (name.endsWith('.txt')) return { kind: 'book', book: readTxt(bytes, options.filename, options.encoding, options.txtDetectHeadings) };
   throw new Error('Unsupported format. Choose EPUB, FB2, FB2.ZIP, FBZ, TXT, CBZ, HTML or Markdown.');
 }
 export async function extractImage(bytes: Uint8Array, options: ReadOptions, imageId: string): Promise<ImageData> {

@@ -20,6 +20,16 @@ Unicode, таблицы, картинки и сноски. В Markdown допо�
 картинка 1×1, встроенная также в FB2. Проверьте ширины 120, 80, 40 и 20 колонок,
 Ctrl+клик по картинкам/сноскам, возврат через `u`, поиск и копирование.
 
+`formatting.html` exercises long/nested/reversed lists, definitions, captions,
+aligned tables and multi-row column headings. Tests package the same content
+as a synthetic EPUB. `formatting.txt` exercises English/Russian chapter labels
+without changing source line breaks or indentation.
+
+`formatting.html` проверяет длинные/вложенные/обратные списки, определения,
+подписи, выравнивание таблиц и многострочные заголовки колонок. В тестах то же
+содержимое упаковывается в синтетическую EPUB. `formatting.txt` проверяет
+русские/английские заголовки с сохранением исходных строк и отступов.
+
 All samples are excluded from the VSIX. / Все примеры исключены из VSIX.
 
 ## EPUB

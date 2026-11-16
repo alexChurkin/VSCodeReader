@@ -238,6 +238,11 @@
           "default": "utf-8",
           "description": "Encoding for TXT, HTML and Markdown documents without a BOM or HTML charset declaration. Applies to new reading sessions."
         },
+        "vscodeReader.txtDetectHeadings": {
+          "type": "boolean",
+          "default": true,
+          "description": "Recognize short standalone TXT chapter labels (Chapter 1, Глава 1, Part I, Пролог) for contents and heading styles. Does not change text or saved positions. Applies when reopening a book."
+        },
         "vscodeReader.maxTextWidth": {
           "type": "integer",
           "default": 0,
