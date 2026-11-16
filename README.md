@@ -44,6 +44,10 @@ With focus in the reader terminal:
 
 | Keys | Action |
 | --- | --- |
+| Wheel / touchpad | Scroll book text across chapter boundaries |
+| `v` | Freeze the screen and enable terminal selection; `v` resumes |
+| `y` | Copy visible book text without UI elements or image markers |
+| `Y` | Open a clean, read-only chapter tab for arbitrary selection/copying |
 | `j` / `k`, ↓ / ↑ | Next / previous line |
 | Space / PageDown, PageUp | Next / previous screen, crossing chapters |
 | `n` / `p` | Next / previous chapter or comic page |
@@ -76,6 +80,12 @@ Press `b` for a quick bookmark, or click **Add bookmark…** in the sidebar to g
 
 Position and bookmark data stay local. Changing the source file starts a new reading position. Book contents are not sent over the network.
 
+## Mouse, selection and copying
+
+The wheel and touchpad scroll the book itself and save its position. `v` temporarily disables mouse reporting and freezes the text so a drag selection is not erased by a redraw; press `v` to resume. Escape still hides the text and `q` closes the reader. A terminal resize ends selection mode. Shift+drag also uses VS Code's normal terminal selection. Copy a terminal selection with your platform's terminal shortcut (for example Ctrl+Shift+C on Linux).
+
+`y` copies the visible source passage, preserving paragraph breaks and indentation without UI line wrapping, margins, prefixes, hints or generated image markers. For an arbitrary passage, press `Y` or click **Select / copy clean text…** in Library. This opens the current chapter in a normal read-only text editor near the reading position, with native selection and copy shortcuts. Closing the copy tab does not ask to save; the original book is never edited. Up to eight distinct copy views can be open; close a view to free it. Image-only CBZ pages have no text to copy. The extension does not read or rewrite an existing terminal selection through the clipboard.
+
 ## Search, jump history and footnotes
 
 Press `/` to search literal text without case sensitivity. The current match uses inverse video; other matches are underlined. `[` and `]` move between matches and wrap at the ends. The footer shows the match count and keys when space allows; the page counter always takes priority. Queries are limited to 256 characters and the first 1,000 matches (`+` indicates truncation). The last query is stored locally for each book and restored after restart. `c` clears it and removes highlighting.
@@ -94,10 +104,17 @@ For HTML/Markdown, image paths are resolved relative to the document folder. Ima
 
 For CBZ, use `n` / `p` to select a page and Ctrl+click its image marker or press `i` to open it. Pages stay in separate image tabs; page changes do not automatically open images. If the book changes on disk, close its reading terminal and reopen it before viewing more images.
 
+## Installed build and updates
+
+Library always shows **Installed: 0.1.0 · code <revision>**. Hover to see the full commit and build time, or click it / run **VSCodeReader: Installed Build** to copy the revision. Uncommitted source builds are marked **local changes**; official GitHub builds contain the clean commit SHA. Build metadata is also included in `dist/build-info.json` inside the VSIX.
+
+**Open latest GitHub Release** in Library or **VSCodeReader: Open Latest GitHub Release** opens the current release in your browser. Compare its revision with the installed one and install the new VSIX with `code --install-extension vscode-reader-0.1.0.vsix --force`, then run **Developer: Reload Window**. Release browsing is explicit; no background update requests are made.
+
 ## Settings
 
 - Font, font size and colors: use normal VS Code terminal settings.
 - `vscodeReader.terminalName`: tab name template; defaults to `{title}`. `{filename}` is also supported. The literal `output` resolves to the book title.
+- `vscodeReader.wheelScrollLines`: lines per wheel/trackpad report, default `3`; use `1` for finer scrolling. Applies immediately.
 - `vscodeReader.maxTextWidth`: maximum text width in terminal cells, excluding the prefix and margins; `0` (default) uses the available width.
 - `vscodeReader.horizontalPadding`: minimum left/right margins in terminal cells, default `0`; margins shrink automatically in narrow terminals.
 - `vscodeReader.centerText`: center a limited-width text column, default `false`.
@@ -114,11 +131,14 @@ npm run lint:fix     # apply safe automatic lint fixes
 npm run check        # lint, strict typecheck, unit tests, extension and parser worker build
 npm run test:host    # integration checks in VS Code 1.95.3
 npm run package      # VSIX without samples, tests or node_modules
+npm run benchmark    # cold wrapping, 1,000 cached jumps and 100 redraws
 ```
 
 The project uses TypeScript and the VS Code API, with Node.js scripts and esbuild for bundling. ESLint uses the recommended JavaScript/TypeScript rules plus type-aware checks for unhandled promises, async callbacks and invalid `await`. TypeScript also checks missing return paths and switch fallthrough. `npm run check` and the VS Code host tests must pass in GitHub Actions before the release is updated. The ESLint editor extension is recommended in this workspace. TypeScript 6 is pinned to match the supported typescript-eslint peer range.
 
 The host test runs VS Code twice to verify that positions and named bookmarks survive a full restart. It downloads VS Code on its first run. Linux needs Electron libraries and a display (`xvfb-run` in CI). Set `VSCODE_TEST_VERSION` to test another VS Code version. Tests use synthetic books and the included EPUB; they do not download books.
+
+EPUB XHTML is validated and parsed once per document. Chapters are wrapped only when visited; up to four layouts / 100,000 lines are cached per session, and each line’s text is materialized only when requested. Jumps use binary search over line offsets and an indexed book-wide position table. The current layout remains available even if it exceeds the cache budget. ASCII has a fast wrapping path; Unicode keeps grapheme-aware wrapping. The benchmark reports timings without machine-dependent pass/fail thresholds.
 
 Parsing and image extraction run in cancellable workers. Limits: 100 MiB input, 300 MiB declared archive contents, 10,000 archive entries, 10 MiB per extracted resource, and 32 MiB of extracted text. Uncompressed FB2/TXT/HTML/Markdown documents are limited to 32 MiB; a compressed FB2 entry is limited to 10 MiB.
 

@@ -7,6 +7,33 @@ export interface ImageLinkRange { startIndex: number; length: number; imageId: s
 export interface Line { text: string; offset: number }
 const segmenter = new Intl.Segmenter(undefined, { granularity: 'grapheme' });
 
+function* graphemes(text: string) {
+  if (/^[\x20-\x7e]*$/.test(text)) {
+    for (let index = 0; index < text.length; index++) yield { segment: text[index], index };
+  } else {
+    // Keep the last grapheme for the next chunk: a chunk boundary may fall in
+    // the middle of a surrogate pair, combining sequence or emoji ZWJ cluster.
+    let start = 0, size = 8192;
+    while (start < text.length) {
+      let end = Math.min(text.length, start + size);
+      if (end < text.length && /[\ud800-\udbff]/.test(text[end - 1])) end--;
+      let previous: { segment: string; index: number } | undefined;
+      for (const part of segmenter.segment(text.slice(start, end))) {
+        if (previous) yield { segment: previous.segment, index: start + previous.index };
+        previous = part;
+      }
+      if (!previous) break;
+      if (end === text.length) { yield { segment: previous.segment, index: start + previous.index }; break; }
+      if (previous.index === 0) size *= 2;
+      else { start += previous.index; size = 8192; }
+    }
+  }
+}
+function lazyLine(source: string, start: number, length: number, base: number): Line {
+  let value: string | undefined;
+  return { offset: base + start, get text() { return value ??= source.slice(start, start + length); } };
+}
+
 export function wrap(text: string, columns: number): Line[] {
   const width = Math.max(1, Math.floor(columns));
   const result: Line[] = [];
@@ -15,18 +42,18 @@ export function wrap(text: string, columns: number): Line[] {
     let line = '', cells = 0, start = 0, lastSpace = -1;
     if (!paragraph) result.push({ text: '', offset: base });
     // Stream graphemes: never allocate an object per character for a huge paragraph.
-    for (const part of segmenter.segment(paragraph)) {
+    for (const part of graphemes(paragraph)) {
       const size = /^[\x20-\x7e]$/.test(part.segment) ? 1 : stringWidth(part.segment);
       let broke = false;
       while (line && cells + size > width) {
         broke = true;
         if (lastSpace > 0) {
-          result.push({ text: line.slice(0, lastSpace).trimEnd(), offset: base + start });
+          result.push(lazyLine(paragraph, start, line.slice(0, lastSpace).trimEnd().length, base));
           start += lastSpace;
           line = line.slice(lastSpace);
           cells = stringWidth(line);
         } else {
-          result.push({ text: line.trimEnd(), offset: base + start });
+          result.push(lazyLine(paragraph, start, line.trimEnd().length, base));
           line = ''; cells = 0; start = part.index;
         }
         lastSpace = -1;
@@ -42,7 +69,7 @@ export function wrap(text: string, columns: number): Line[] {
       cells += size;
       if (part.segment === ' ') lastSpace = line.length;
     }
-    if (line) result.push({ text: line.trimEnd(), offset: base + start });
+    if (line) result.push(lazyLine(paragraph, start, line.trimEnd().length, base));
     base += paragraph.length + 1;
   }
   return result;
@@ -56,6 +83,9 @@ export class Screen {
   lines: Line[] = [];
   readonly prefix: string;
   private offset = 0;
+  private activeWrap = '';
+  private readonly wraps = new Map<string, Line[]>();
+  private cachedLineCount = 0;
   private layout: ReadingLayout = { maxTextWidth: 0, horizontalPadding: 0, centerText: false };
   constructor(readonly book: Book, prefix: string, locator: Locator) {
     this.prefix = safeText(prefix).replace(/\n/g, '').slice(0, 12);
@@ -70,17 +100,46 @@ export class Screen {
   }
   go(locator: Locator): void {
     this.chapter = Math.max(0, Math.min(this.book.chapters.length - 1, locator.chapter));
-    this.lines = wrap(this.book.chapters[this.chapter].text, this.geometry.width);
-    this.offset = Math.max(0, Math.min(this.book.chapters[this.chapter].text.length, locator.offset));
-    this.row = 0;
-    for (let i = 0; i < this.lines.length; i++) {
-      if (this.lines[i].offset > locator.offset) break;
-      this.row = i;
+    const key = `${this.chapter}:${this.geometry.width}`;
+    if (key !== this.activeWrap) {
+      const cached = this.wraps.get(key);
+      this.lines = cached ?? wrap(this.book.chapters[this.chapter].text, this.geometry.width);
+      this.activeWrap = key;
+      if (cached) this.wraps.delete(key);
+      else this.cachedLineCount += this.lines.length;
+      this.wraps.set(key, this.lines);
+      while (this.wraps.size > 4 || this.cachedLineCount > 100_000) {
+        const oldest = this.wraps.entries().next().value;
+        if (!oldest) break;
+        this.wraps.delete(oldest[0]); this.cachedLineCount -= oldest[1].length;
+      }
     }
+    this.offset = Math.max(0, Math.min(this.book.chapters[this.chapter].text.length, locator.offset));
+    let low = 0, high = this.lines.length;
+    while (low < high) {
+      const middle = (low + high) >>> 1;
+      if (this.lines[middle].offset <= this.offset) low = middle + 1; else high = middle;
+    }
+    this.row = Math.max(0, low - 1);
   }
   move(delta: number): void {
     this.row = Math.max(0, Math.min(this.lines.length - 1, this.row + delta));
     this.offset = this.lines[this.row]?.offset ?? 0;
+  }
+  scroll(delta: number): void {
+    let remaining = Math.trunc(delta);
+    while (remaining) {
+      const direction = Math.sign(remaining);
+      const available = direction > 0 ? this.lines.length - 1 - this.row : this.row;
+      const step = Math.min(Math.abs(remaining), available);
+      if (step) { this.move(direction * step); remaining -= direction * step; }
+      if (!remaining) break;
+      const next = this.chapter + direction;
+      if (next < 0 || next >= this.book.chapters.length) break;
+      this.nextChapter(direction);
+      if (direction < 0) this.move(this.lines.length - 1);
+      remaining -= direction;
+    }
   }
   nextChapter(delta: number): void {
     const chapter = Math.max(0, Math.min(this.book.chapters.length - 1, this.chapter + delta));

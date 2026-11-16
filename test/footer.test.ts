@@ -4,8 +4,8 @@ import stringWidth from 'string-width';
 import { footerText, fitCells, terminalName, type HintMode } from '../src/footer';
 
 void test('footer adapts to reading, hidden, modal and loading states', () => {
-  const reading = footerText({ mode: 'reading', columns: 220, images: true, bookmarks: true });
-  for (const hint of ['Space', 'g contents', '/ search', 'b bookmark', 'B bookmarks', 'i images', 'Esc hide', 'q close']) assert.ok(reading.includes(hint), hint);
+  const reading = footerText({ mode: 'reading', columns: 360, images: true, bookmarks: true });
+  for (const hint of ['wheel', 'v select', 'y copy', 'Y clean view', 'Space', 'g contents', '/ search', 'b bookmark', 'B bookmarks', 'i images', 'Esc hide', 'q close']) assert.ok(reading.includes(hint), hint);
   const plain = footerText({ mode: 'reading', columns: 220 });
   assert.doesNotMatch(plain, /i images|B bookmarks/);
   assert.match(footerText({ mode: 'hidden', columns: 80 }), /r resume/);
@@ -17,7 +17,7 @@ void test('footer adapts to reading, hidden, modal and loading states', () => {
   assert.match(footerText({ mode: 'reading', columns: 80, message: 'Bookmark saved' }), /^Bookmark saved/);
 });
 void test('hint lines never use the last terminal cell or split graphemes', () => {
-  const modes: HintMode[] = ['reading', 'hidden', 'picker', 'search', 'location', 'name', 'image-loading'];
+  const modes: HintMode[] = ['reading', 'hidden', 'picker', 'search', 'location', 'name', 'image-loading', 'selection'];
   for (const columns of [1, 2, 8, 20, 40, 80, 220]) for (const mode of modes) {
     assert.ok(stringWidth(footerText({ mode, columns, images: true, bookmarks: true })) <= Math.max(0, columns - 1));
     assert.ok(stringWidth(footerText({ mode, columns, message: 'Saved 中文 👩‍💻' })) <= Math.max(0, columns - 1));
@@ -35,7 +35,7 @@ void test('terminal tabs use book titles with custom templates and old default m
 
 void test('page status remains visible ahead of hints and feedback, including narrow terminals', () => {
   const progress = { page: 12, pages: 47, percent: 24.3 };
-  for (const mode of ['reading', 'search', 'location', 'picker', 'image-loading'] as HintMode[]) {
+  for (const mode of ['reading', 'search', 'location', 'picker', 'image-loading', 'selection'] as HintMode[]) {
     const line = footerText({ mode, columns: 100, progress, message: 'Bookmark saved', images: true, bookmarks: true });
     assert.match(line, /Page 12\/47 \| 24\.3%$/);
     assert.ok(stringWidth(line) < 100);

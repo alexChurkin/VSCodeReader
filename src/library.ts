@@ -1,3 +1,4 @@
+import { buildInfo, buildLabel } from './build-info';
 import * as vscode from 'vscode';
 import type { Locator, Bookmark, TocItem } from './book';
 import { safeText } from './book';
@@ -57,6 +58,8 @@ export class ReaderLibrary implements vscode.TreeDataProvider<LibraryItem>, vsco
         ...(active.canGoForward ? [node(prefix + ':forward', 'Forward to next passage', 'arrow-right', 'vscodeReader.goForward', [target])] : []),
         node(prefix + ':find', 'Find in book…', 'search', 'vscodeReader.find', [undefined, target]),
         node(prefix + ':footnotes', 'Footnotes in chapter…', 'references', 'vscodeReader.showFootnotes', [target]),
+        node(prefix + ':copy', 'Copy visible book text', 'copy', 'vscodeReader.copyText', [target]),
+        node(prefix + ':copy-view', 'Select / copy clean text…', 'selection', 'vscodeReader.copyView', [target]),
         node(prefix + ':layout', 'Reading layout…', 'layout', 'vscodeReader.readingLayout'),
         node(prefix + ':next', 'Next screen', 'arrow-down', 'vscodeReader.nextPage', [target]),
         node(prefix + ':previous', 'Previous screen', 'arrow-up', 'vscodeReader.previousPage', [target]),
@@ -74,6 +77,10 @@ export class ReaderLibrary implements vscode.TreeDataProvider<LibraryItem>, vsco
       item.description = book.progress; item.tooltip = book.uri + (book.entry ? '\n' + book.entry : '');
       return item;
     })));
+    const installed = node('build', `Installed: ${buildLabel()}`, 'info', 'vscodeReader.installedBuild');
+    installed.tooltip = `Installed code: ${buildInfo.revision}${buildInfo.builtAt ? '\nBuilt: ' + buildInfo.builtAt : ''}`;
+    roots.push(installed);
+    roots.push(node('update', 'Open latest GitHub Release', 'cloud-download', 'vscodeReader.openLatestRelease'));
     return roots;
   }
 }

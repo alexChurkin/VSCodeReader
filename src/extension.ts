@@ -14,6 +14,9 @@ import type { TextEncoding } from './encoding';
 import { previewImage } from './image-preview';
 import type { ReadingLayout } from './screen';
 import { ReaderTerminal } from './terminal';
+import { CopyViews } from './copy-view';
+import { buildInfo } from './build-info';
+import { openLatestRelease, showInstalledBuild } from './updates';
 import { ReaderLinks } from './terminal-links';
 
 interface Session { id: string; source: RecentBook; terminal: vscode.Terminal; reader: ReaderTerminal }
@@ -47,6 +50,8 @@ const fingerprint = (bytes: Uint8Array) => createHash('sha256').update(bytes).di
 const sessionId = (uri: vscode.Uri, entry?: string) => uri.toString() + (entry ? '\0' + entry : '');
 
 export async function activate(context: vscode.ExtensionContext): Promise<void> {
+  const copyViews = new CopyViews();
+  context.subscriptions.push(copyViews);
   const storage = new ReaderStorage(context.globalStorageUri, context.globalState);
   let latest: Session | undefined;
   const opening = new Set<string>();
@@ -176,8 +181,9 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
               if (!imageToken.isCancellationRequested && !stopping && !reader.isClosed) await previewImage(context.globalStorageUri, data, () => !reader.isClosed && !imageToken.isCancellationRequested && !stopping);
             }, reader.onDidClose);
           } catch (error) { if (!(error instanceof vscode.CancellationError)) throw error; }
-        });
+        }, copyViews.open);
         reader.configureLayout(readLayout());
+        reader.configureMouse(config.get<number>('wheelScrollLines', 3));
         const name = terminalName(config.get<string>('terminalName', '{title}'), book.title, uri.path.split('/').at(-1) || 'Reader');
         const terminal = vscode.window.createTerminal({ name, pty: reader, location: vscode.TerminalLocation.Panel, iconPath: new vscode.ThemeIcon('book'), isTransient: true });
         const session: Session = { id: keyId, source, terminal, reader };
@@ -227,8 +233,17 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       for (const [key, value] of Object.entries(selected.layout)) await config.update(key, value, vscode.ConfigurationTarget.Global);
     }),
     vscode.workspace.onDidChangeConfiguration(event => {
-      if (event.affectsConfiguration('vscodeReader')) for (const session of sessions.values()) session.reader.configureLayout(readLayout());
+      if (event.affectsConfiguration('vscodeReader')) for (const session of sessions.values()) {
+        session.reader.configureLayout(readLayout());
+        session.reader.configureMouse(vscode.workspace.getConfiguration('vscodeReader').get<number>('wheelScrollLines', 3));
+      }
     }),
+    vscode.commands.registerCommand('vscodeReader.installedBuild', showInstalledBuild),
+    vscode.commands.registerCommand('vscodeReader.openLatestRelease', openLatestRelease),
+    vscode.commands.registerCommand('vscodeReader.buildInfo', () => ({ ...buildInfo })),
+    vscode.commands.registerCommand('vscodeReader.copyText', target => selectedSession(target)?.reader.copyVisibleText()),
+    vscode.commands.registerCommand('vscodeReader.copyView', target => selectedSession(target)?.reader.openCopyView()),
+    vscode.commands.registerCommand('vscodeReader.selectText', target => selectedSession(target)?.reader.toggleSelection()),
     vscode.commands.registerCommand('vscodeReader.hide', () => activeSession()?.reader.hide()),
     vscode.commands.registerCommand('vscodeReader.openImage', (id?: string) => activeSession()?.reader.showImages(typeof id === 'string' ? id : undefined, true)),
     vscode.commands.registerCommand('vscodeReader.focusSession', target => focusSession(selectedSession(target))),

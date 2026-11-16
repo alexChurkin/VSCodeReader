@@ -4,6 +4,9 @@ import { parseLocation, readingProgress, progressLabel, pageProgress } from './p
 import { footerText, type HintMode } from './footer';
 import { Screen, type ReadingLayout } from './screen';
 import { NavigationHistory } from './navigation';
+import type { CopyViewOpener } from './copy-view';
+import { cleanPassage } from './copy';
+import { mouseInput, MOUSE_ON, MOUSE_OFF } from './mouse';
 import { BookSearch } from './search';
 
 const CLEAR = '\x1b[2J\x1b[3J\x1b[H';
@@ -18,6 +21,9 @@ export class ReaderTerminal implements vscode.Pseudoterminal {
   readonly search: BookSearch;
   private readonly history = new NavigationHistory();
   private linkRevision = 0;
+  private selecting = false;
+  private mouseEnabled = false;
+  private wheelLines = 3;
   private hidden = false;
   private closed = false;
   private opened = false;
@@ -30,7 +36,7 @@ export class ReaderTerminal implements vscode.Pseudoterminal {
   private mode: HintMode = 'reading';
   private feedback: string | undefined;
   private feedbackTimer: ReturnType<typeof setTimeout> | undefined;
-  constructor(book: Book, prefix: string, private state: ReadingState, private persist: (state: ReadingState) => void, private imagePreview?: (image: BookImage) => Promise<void>) {
+  constructor(book: Book, prefix: string, private state: ReadingState, private persist: (state: ReadingState) => void, private imagePreview?: (image: BookImage) => Promise<void>, private copyView?: CopyViewOpener) {
     this.screen = new Screen(book, prefix, state);
     this.search = new BookSearch(book, state.searchQuery);
     this.search.align(state);
@@ -50,7 +56,7 @@ export class ReaderTerminal implements vscode.Pseudoterminal {
     if (this.feedbackTimer) clearTimeout(this.feedbackTimer);
     this.save();
     if (this.opened) {
-      this.writes.fire('\x1b[0m\x1b[?25h' + CLEAR + '\x1b[?1049l');
+      this.writes.fire(MOUSE_OFF + '\x1b[0m\x1b[?25h' + CLEAR + '\x1b[?1049l');
       this.finishExit();
     }
     this.writes.dispose();
@@ -64,52 +70,60 @@ export class ReaderTerminal implements vscode.Pseudoterminal {
   }
   setDimensions(dimensions: vscode.TerminalDimensions): void {
     if (this.closed) return;
+    this.selecting = false;
     this.resizeScreen(dimensions);
     this.draw();
     this.save();
   }
   hide(): void {
     if (this.closed) return;
+    this.selecting = false;
     this.hidden = true;
     this.pending = '';
     this.save();
     this.draw();
   }
-  resume(): void { if (this.closed) return; this.pending = ''; this.hidden = false; this.draw(); this.changes.fire(); }
-  private draw(): void {
+  resume(): void { if (this.closed) return; this.selecting = false; this.pending = ''; this.hidden = false; this.draw(); this.changes.fire(); }
+  private syncMouse(): void {
+    const enabled = this.opened && !this.hidden && !this.busy && !this.selecting && !this.closed;
+    if (enabled !== this.mouseEnabled) { this.mouseEnabled = enabled; this.writes.fire(enabled ? MOUSE_ON : MOUSE_OFF); }
+  }
+  private draw(force = false): void {
     if (this.closed) return;
+    this.syncMouse();
+    if (this.selecting && !force) return;
     this.linkRevision++;
     let frame = this.hidden ? CLEAR + 'ready' : this.screen.render(this.search.highlights(this.screen.chapter));
     if (this.hasFooter) {
       const end = this.screen.chapter === this.screen.book.chapters.length - 1 && this.screen.row + this.screen.rows >= this.screen.lines.length;
-      const hint = footerText({ mode: this.hidden ? 'hidden' : this.mode, columns: this.viewport.columns, images: !!this.screen.book.images?.length, bookmarks: !!this.state.bookmarks.length, end, search: this.search.status, history: this.history.canGoBack || this.history.canGoForward, footnotes: !!this.screen.book.chapters[this.screen.chapter].footnotes?.length, message: this.feedback, progress: pageProgress(this.screen.book, readingProgress(this.screen.book, this.screen.locator, this.screen.row, this.screen.rows, this.screen.lines.length)) });
+      const hint = footerText({ mode: this.hidden ? 'hidden' : this.selecting ? 'selection' : this.mode, columns: this.viewport.columns, images: !!this.screen.book.images?.length, bookmarks: !!this.state.bookmarks.length, end, search: this.search.status, history: this.history.canGoBack || this.history.canGoForward, footnotes: !!this.screen.book.chapters[this.screen.chapter].footnotes?.length, message: this.feedback, progress: pageProgress(this.screen.book, readingProgress(this.screen.book, this.screen.locator, this.screen.row, this.screen.rows, this.screen.lines.length)) });
       frame += `\x1b[${this.viewport.rows};1H\x1b[2K\x1b[2m${hint}\x1b[0m`;
     }
     this.writes.fire(frame);
   }
   imageLinks(line: string) {
-    if (this.closed || this.hidden || this.busy || !this.imagePreview) return [];
+    if (this.closed || this.hidden || this.busy || this.selecting || !this.imagePreview) return [];
     return this.screen.imageLinks(line).map(link => ({ ...link, revision: this.linkRevision }));
   }
   async openImageLink(imageId: string, revision: number): Promise<void> {
-    if (this.closed || this.hidden || this.busy || revision !== this.linkRevision) return;
+    if (this.closed || this.hidden || this.busy || this.selecting || revision !== this.linkRevision) return;
     await this.showImages(imageId);
   }
   footnoteLinks(line: string) {
-    if (this.closed || this.hidden || this.busy) return [];
+    if (this.closed || this.hidden || this.busy || this.selecting) return [];
     return this.screen.footnoteLinks(line).map(link => ({ ...link, revision: this.linkRevision }));
   }
   openFootnoteLink(id: string, revision: number): void {
-    if (this.closed || this.hidden || this.busy || revision !== this.linkRevision) return;
+    if (this.closed || this.hidden || this.busy || this.selecting || revision !== this.linkRevision) return;
     this.followFootnote(id);
   }
   followFootnote(id: string): void {
-    if (this.closed || this.hidden || this.busy) return;
+    if (this.closed || this.hidden || this.busy || this.selecting) return;
     const note = this.screen.book.chapters[this.screen.chapter].footnotes?.find(note => note.id === id);
     if (note) { this.goTo(note.target); this.notice('Footnote | u back to reading | U forward'); }
   }
   async showFootnotes(): Promise<void> {
-    if (this.closed || this.hidden || this.busy) return;
+    if (this.closed || this.hidden || this.busy || this.selecting) return;
     const notes = this.screen.book.chapters[this.screen.chapter].footnotes ?? [];
     const first = this.screen.lines[this.screen.row]?.offset ?? 0;
     const last = this.screen.lines[this.screen.row + this.screen.rows]?.offset ?? Infinity;
@@ -148,6 +162,33 @@ export class ReaderTerminal implements vscode.Pseudoterminal {
   }
   clearSearch(): void { if (!this.closed) { this.search.setQuery(''); this.state.searchQuery = ''; this.save(); this.draw(); } }
   async promptSearch(): Promise<void> { if (!this.closed && !this.busy) { this.resume(); await this.prompt('search'); } }
+  configureMouse(lines: number): void { this.wheelLines = Number.isFinite(lines) ? Math.max(1, Math.min(20, Math.floor(lines))) : 3; }
+  toggleSelection(): void {
+    if (this.closed || this.hidden || this.busy) return;
+    this.selecting = !this.selecting; this.pending = ''; this.draw(true);
+  }
+  async copyVisibleText(): Promise<void> {
+    if (this.closed || this.hidden || this.busy) return;
+    const chapter = this.screen.book.chapters[this.screen.chapter];
+    const start = this.screen.lines[this.screen.row]?.offset ?? 0;
+    const end = this.screen.lines[this.screen.row + this.screen.rows]?.offset ?? chapter.text.length;
+    const text = this.screen.book.imagePages ? '' : cleanPassage(chapter, start, end);
+    if (!text.trim() || text === '[empty chapter]') { this.notice('No book text on this screen'); return; }
+    await vscode.env.clipboard.writeText(text);
+    if (!this.closed) { this.notice('Text copied | Y clean copy view'); vscode.window.setStatusBarMessage('Book text copied', 2500); }
+  }
+  async openCopyView(): Promise<void> {
+    if (this.closed || this.hidden || this.busy) return;
+    const chapter = this.screen.book.chapters[this.screen.chapter];
+    const content = this.screen.book.imagePages ? '' : cleanPassage(chapter);
+    if (!content.trim() || content === '[empty chapter]') { this.notice('No text in this chapter'); return; }
+    if (!this.copyView) { this.notice('Copy view is unavailable'); return; }
+    try {
+      await this.copyView(content, `${this.screen.book.title} — ${chapter.title}`, cleanPassage(chapter, 0, this.screen.locator.offset).length, () => !this.closed && !this.hidden);
+    } catch (error) {
+      if (!this.closed) void vscode.window.showErrorMessage(`Reader: ${safeText(error instanceof Error ? error.message : String(error))}`);
+    }
+  }
   get isClosed(): boolean { return this.closed; }
   private get hasFooter(): boolean { return this.viewport.rows >= 2 && this.viewport.columns >= 2; }
   private resizeScreen(dimensions: vscode.TerminalDimensions): void {
@@ -178,6 +219,16 @@ export class ReaderTerminal implements vscode.Pseudoterminal {
     const hadPending = !!this.pending;
     const sequence = this.pending + data;
     this.pending = '';
+    const mouse = mouseInput(sequence);
+    if (mouse) {
+      const restore = hadPending && !this.escapeWasHidden && this.hidden;
+      if (restore) this.hidden = false;
+      this.pending = mouse.pending;
+      if (!this.hidden && !this.busy && !this.selecting && mouse.wheel) { this.screen.scroll(Math.max(-200, Math.min(200, mouse.wheel * this.wheelLines))); this.changed(); }
+      else if (restore) this.draw();
+      if (mouse.remainder) this.handleInput(mouse.remainder);
+      return;
+    }
     if (sequence === '\x1b') {
       this.escapeWasHidden = this.hidden;
       this.hide();
@@ -191,7 +242,7 @@ export class ReaderTerminal implements vscode.Pseudoterminal {
     const keys = new Map([['\x1b[A', -1], ['\x1b[B', 1], ['\x1bOA', -1], ['\x1bOB', 1], ['\x1b[5~', -this.screen.rows], ['\x1b[6~', this.screen.rows]]);
     if (keys.has(sequence)) {
       if (hadPending && !this.escapeWasHidden) this.hidden = false;
-      if (this.hidden || this.busy) return;
+      if (this.hidden || this.busy || this.selecting) return;
       const movement = keys.get(sequence)!;
       if (sequence.endsWith('~')) this.screen.page(Math.sign(movement)); else this.screen.move(movement);
       this.changed(); return;
@@ -204,6 +255,10 @@ export class ReaderTerminal implements vscode.Pseudoterminal {
       return;
     }
     if (data === 'q') { this.close(); return; }
+    if (data === 'v') { this.toggleSelection(); return; }
+    if (data === 'y') { void this.copyVisibleText(); return; }
+    if (data === 'Y') { void this.openCopyView(); return; }
+    if (this.selecting) return;
     if (this.busy) return;
     if (data === 'j' || data === '\r') this.screen.move(1);
     else if (data === 'k') this.screen.move(-1);
@@ -328,6 +383,7 @@ export class ReaderTerminal implements vscode.Pseudoterminal {
     try {
       if (kind === 'help') {
         await vscode.window.showQuickPick([
+          'Wheel / touchpad: scroll book; Shift+drag: terminal selection', 'v: freeze selection mode; v again: resume reading', 'y: copy visible book text; Y: open clean text for selection/copying',
           'j/k or arrows: move one line', 'Space / PageDown / PageUp: move one screen',
           'n/p: next / previous chapter', 'g: table of contents', 'u / U: jump back / forward',
           '/: search book (up to 1000 matches); [ / ]: previous / next; c: clear highlights', 'f: footnotes; Ctrl+click an internal reference; u: return to reading',

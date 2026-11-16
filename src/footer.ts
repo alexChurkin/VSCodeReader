@@ -2,7 +2,7 @@ import type { PageProgress } from './progress';
 import stringWidth from 'string-width';
 import { safeText } from './book';
 
-export type HintMode = 'reading' | 'hidden' | 'picker' | 'search' | 'location' | 'name' | 'image-loading';
+export type HintMode = 'reading' | 'hidden' | 'picker' | 'search' | 'location' | 'name' | 'image-loading' | 'selection';
 export interface HintState { mode: HintMode; columns: number; images?: boolean; bookmarks?: boolean; end?: boolean; history?: boolean; footnotes?: boolean; search?: { query: string; index: number; count: number; truncated: boolean }; message?: string; progress?: PageProgress }
 const segments = new Intl.Segmenter(undefined, { granularity: 'grapheme' });
 export function fitCells(text: string, width: number): string {
@@ -24,6 +24,7 @@ export function footerText(state: HintState): string {
   const hintWidth = status ? Math.max(0, width - stringWidth(status) - 3) : width;
   const variants: string[] = [];
   if (state.mode === 'hidden') variants.push('Text hidden | r resume | q close | ? help', 'r resume | q close | ? help', 'r resume | q close', 'r resume', 'r');
+  else if (state.mode === 'selection') variants.push('Drag to select | copy with terminal shortcut | v resume | y copy text | Y clean view | Esc hide', 'Drag to select | v resume | Y clean view | Esc hide', 'Select | v resume | Y copy view', 'v resume');
   else if (state.mode === 'image-loading') variants.push('Opening image… | Cancel in the progress notification | Esc hide | q close', 'Opening image… | Esc hide | q close', 'Opening image…');
   else if (state.mode !== 'reading') {
     const action = state.mode === 'search' ? 'Search text' : state.mode === 'location' ? 'Page number or 40%' : state.mode === 'name' ? 'Bookmark name' : 'Select an item';
@@ -36,7 +37,7 @@ export function footerText(state: HintState): string {
     if (state.history) variants.push('u back | U forward | / find | ? help');
     if (state.footnotes) variants.push('Ctrl+click reference | f footnotes | u back | ? help');
     variants.push(
-      `${start} | j/k scroll | n/p chapter | g contents | / search | b bookmark${bookmarks}${image} | l page | s progress | ? help | Esc hide | q close`,
+      `${start} | wheel/j/k scroll | v select | y copy | Y clean view | n/p chapter | g contents | / search | b bookmark${bookmarks}${image} | l page | s progress | ? help | Esc hide | q close`,
       `${state.end ? 'End | PgUp back' : 'Space/PgUp page'} | g toc | / find | b save${state.bookmarks ? ' | B list' : ''}${state.images ? ' | i img' : ''} | ? help | Esc hide`,
       ...(state.images ? ['Ctrl+click image | i images | ? help | Esc hide'] : []),
       `${state.end ? 'End | PgUp back' : 'Space next'} | b save${state.images ? ' | i images' : ''} | ? help | Esc hide`,

@@ -88,6 +88,14 @@ export function readMarkup(bytes: Uint8Array, filename: string, encoding: TextEn
       if (end > offset) (chapters[index].imageLinks ??= []).push({ imageId: image.id, offset, length: end - offset });
     }
   }
+  for (const marker of rendered.markers) {
+    const source = locate(marker.offset);
+    for (let chapter = source.chapter; chapter < chapters.length && starts[chapter] < marker.offset + marker.length; chapter++) {
+      const offset = Math.max(0, marker.offset - starts[chapter]);
+      const end = Math.min(chapters[chapter].text.length, marker.offset + marker.length - starts[chapter]);
+      if (end > offset) (chapters[chapter].imageMarkers ??= []).push({ offset, length: end - offset });
+    }
+  }
   rendered.links.forEach((ref, index) => {
     const id = fragment(ref.href);
     if (!id || !Object.hasOwn(rendered.anchors, id)) return;

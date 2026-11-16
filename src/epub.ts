@@ -3,7 +3,7 @@ import type { LinkReference } from './xml';
 import { decodeXml as decode } from './encoding';
 import { isRasterMediaType } from './images';
 import { Archive, resolveHref } from './archive';
-import { chapterText, content, elements, xml, localName } from './xml';
+import { chapterText, content, elements, xml, validatedXml, localName } from './xml';
 import { safeText, type Book, type BookImage, type Chapter, type TocItem } from './book';
 
 export async function readEpub(bytes: Uint8Array, signal?: AbortSignal): Promise<Book> {
@@ -34,7 +34,7 @@ export async function readEpub(bytes: Uint8Array, signal?: AbortSignal): Promise
     const loadChapter = async (path: string) => {
       signal?.throwIfAborted();
       const source = decode(await archive.read(path));
-      const heading = chapterText(source);
+      const heading = chapterText(validatedXml(source));
       references.push(heading.links);
       const imageLinks: NonNullable<Chapter['imageLinks']> = [];
       for (const ref of heading.images) {
@@ -48,9 +48,8 @@ export async function readEpub(bytes: Uint8Array, signal?: AbortSignal): Promise
           }
         } catch { /* External image references stay inert. */ }
       }
-      const titleDoc = xml(source);
-      const title = content(elements(titleDoc, 'h1')[0] ?? elements(titleDoc, 'h2')[0] ?? elements(titleDoc, 'title')[0] ?? titleDoc);
-      chapters.push({ id: path, title: title.slice(0, 200) || `Section ${chapters.length + 1}`, text: heading.text, anchors: heading.anchors, imageLinks });
+      const title = heading.title;
+      chapters.push({ id: path, title: title.slice(0, 200) || `Section ${chapters.length + 1}`, text: heading.text, anchors: heading.anchors, imageMarkers: heading.markers, imageLinks });
     };
     const auxiliary: string[] = [];
     for (const itemref of elements(spine, 'itemref')) {

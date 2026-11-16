@@ -1,4 +1,5 @@
 export interface FootnoteReference { id: string; offset: number; length: number; label: string; target: Locator }
+export interface ImageMarker { offset: number; length: number }
 export interface ChapterImageLink { imageId: string; offset: number; length: number }
 export interface Chapter {
   id: string;
@@ -6,6 +7,7 @@ export interface Chapter {
   text: string;
   anchors: Record<string, number>;
   imageLinks?: ChapterImageLink[];
+  imageMarkers?: ImageMarker[];
   footnotes?: FootnoteReference[];
 }
 export interface TocItem { title: string; chapter: number; offset: number; depth: number }

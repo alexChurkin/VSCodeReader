@@ -145,6 +145,31 @@
         "command": "vscodeReader.readingLayout",
         "title": "VSCodeReader: Reading Layout",
         "icon": "$(layout)"
+      },
+      {
+        "command": "vscodeReader.copyText",
+        "title": "VSCodeReader: Copy Visible Book Text",
+        "icon": "$(copy)"
+      },
+      {
+        "command": "vscodeReader.copyView",
+        "title": "VSCodeReader: Select / Copy Clean Text",
+        "icon": "$(selection)"
+      },
+      {
+        "command": "vscodeReader.selectText",
+        "title": "VSCodeReader: Toggle Terminal Selection Mode",
+        "icon": "$(selection)"
+      },
+      {
+        "command": "vscodeReader.installedBuild",
+        "title": "VSCodeReader: Installed Build",
+        "icon": "$(info)"
+      },
+      {
+        "command": "vscodeReader.openLatestRelease",
+        "title": "VSCodeReader: Open Latest GitHub Release",
+        "icon": "$(cloud-download)"
       }
     ],
     "menus": {
@@ -231,6 +256,13 @@
           "type": "boolean",
           "default": false,
           "description": "Center the reading column when maxTextWidth is narrower than the terminal. Applies immediately."
+        },
+        "vscodeReader.wheelScrollLines": {
+          "type": "integer",
+          "default": 3,
+          "minimum": 1,
+          "maximum": 20,
+          "description": "Book lines per wheel/trackpad mouse report. Use 1 for finer scrolling. Applies immediately."
         }
       }
     },
@@ -264,7 +296,8 @@
     "test:host": "npm run build && node scripts/test-host.mjs",
     "prepackage": "node scripts/clean-packages.mjs",
     "lint": "eslint . --max-warnings 0",
-    "lint:fix": "npm run lint -- --fix"
+    "lint:fix": "npm run lint -- --fix",
+    "benchmark": "node --import tsx scripts/benchmark-screen.mjs"
   },
   "dependencies": {
     "domhandler": "6.0.1",

@@ -1,13 +1,30 @@
+import { execFileSync } from 'node:child_process';
 import { context, build } from 'esbuild';
 import { readFile, readdir, writeFile } from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
 
+function currentBuild() {
+  let revision = 'development', dirty = true;
+  try {
+    revision = execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim();
+    dirty = !!execFileSync('git', ['status', '--porcelain'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim();
+  } catch { /* Source archives can be built without Git metadata. */ }
+  return { version: '0.1.0', revision, builtAt: new Date().toISOString(), dirty };
+}
+const buildInfo = currentBuild();
+if (process.argv.includes('--watch')) buildInfo.dirty = true;
 const options = {
+  define: { __READER_BUILD__: JSON.stringify(buildInfo) },
   entryPoints: { extension: 'src/extension.ts', worker: 'src/worker.ts' },
   outdir: 'dist', outExtension: { '.js': '.cjs' }, bundle: true,
   platform: 'node', format: 'cjs', target: 'node20', external: ['vscode'],
   sourcemap: true, legalComments: 'linked', metafile: true,
   plugins: [{
+    name: 'build-info',
+    setup(builder) {
+      builder.onEnd(async result => { if (!result.errors.length) await writeFile('dist/build-info.json', JSON.stringify(buildInfo, null, 2) + '\n'); });
+    }
+  }, {
     name: 'third-party-notices',
     setup(builder) {
       builder.onEnd(async result => {

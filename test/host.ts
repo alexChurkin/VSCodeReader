@@ -11,6 +11,8 @@ import { ReaderLinks } from '../src/terminal-links';
 import { readMarkup } from '../src/markup';
 import { readFb2 } from '../src/fb2';
 import { previewImage } from '../src/image-preview';
+import { CopyViews } from '../src/copy-view';
+import { MOUSE_ON, MOUSE_OFF } from '../src/mouse';
 import { validateImage } from '../src/images';
 import { restoreState, type Book, type ReadingState } from '../src/book';
 
@@ -24,6 +26,11 @@ export async function run(): Promise<void> {
   assert.ok(extension);
   await extension.activate();
   await vscode.commands.executeCommand('workbench.view.extension.vscodeReader');
+  const installedBuild = await vscode.commands.executeCommand<{ version: string; revision: string; dirty: boolean }>('vscodeReader.buildInfo');
+  const packagedBuild = JSON.parse(Buffer.from(await vscode.workspace.fs.readFile(vscode.Uri.joinPath(extension.extensionUri, 'dist', 'build-info.json'))).toString());
+  assert.equal(installedBuild.version, '0.1.0'); assert.equal(installedBuild.revision, packagedBuild.revision);
+  assert.match(installedBuild.revision, /^[a-f0-9]{40}$/);
+  if (process.env.GITHUB_SHA) { assert.equal(installedBuild.revision, process.env.GITHUB_SHA); assert.equal(installedBuild.dirty, false); }
   assert.ok(extension.packageJSON.contributes.viewsContainers.activitybar.some((item: { icon: string }) => item.icon === 'media/book.svg'));
   await vscode.workspace.fs.stat(vscode.Uri.joinPath(extension.extensionUri, 'media', 'book.svg'));
   const persistenceDirectory = vscode.Uri.joinPath(extension.extensionUri, '.vscode-test', 'reader-fixtures');
@@ -45,19 +52,49 @@ export async function run(): Promise<void> {
   }
   const book: Book = { title: 'Private title', author: '', chapters: [{ id: 'one', title: 'One', text: Array.from({ length: 80 }, (_, i) => `line ${i}`).join('\n'), anchors: {} }, { id: 'two', title: 'Two', text: 'next chapter', anchors: {} }], toc: [] };
   let saved: ReadingState | undefined;
-  const reader = new ReaderTerminal(book, '', restoreState(undefined, book), state => { saved = structuredClone(state); });
-  let output = '';
-  const subscription = reader.onDidWrite(data => { output = data; });
+  const copyViews = new CopyViews('vscode-reader-copy-test');
+  const reader = new ReaderTerminal(book, '', restoreState(undefined, book), state => { saved = structuredClone(state); }, undefined, copyViews.open);
+  let output = '', transcript = '';
+  const subscription = reader.onDidWrite(data => { output = data; transcript += data; });
   const terminal = vscode.window.createTerminal({ name: 'reader-test', pty: reader });
   try {
     terminal.show();
     await until(() => output.includes('line 0'));
     assert.doesNotMatch(output, /Private title/);
+    await pause(250); // Let the real terminal finish its initial viewport resize.
     reader.setDimensions({ columns: 80, rows: 6 });
     assert.equal(reader.screen.rows, 5, 'One row should be reserved for hints');
     assert.match(output, /\x1b\[6;1H\x1b\[2K\x1b\[2m/);
     assert.match(output, /\? help/);
     assert.match(output, /Page 1\/1 \| 0%/);
+    assert.ok(transcript.includes(MOUSE_ON));
+    reader.configureMouse(1);
+    reader.handleInput('\x1b[<65;4;2M'); assert.ok(reader.snapshot.position.offset > 0);
+    reader.handleInput('\x1b[<64;4;2M'); assert.equal(reader.snapshot.position.offset, 0);
+    reader.handleInput('\x1b[<65;4;'); reader.handleInput('2M'); assert.ok(reader.snapshot.position.offset > 0);
+    reader.handleInput('\x1b[<64;4;2M');
+    // Even reports split after the first Escape must restore the provisional hide.
+    reader.handleInput('\x1b'); reader.handleInput('[<0;4;2M'); assert.doesNotMatch(output, /ready/);
+    const beforeSelection = reader.snapshot.position;
+    reader.toggleSelection(); assert.ok(transcript.includes(MOUSE_OFF)); assert.match(output, /v resume/);
+    const frozen = output;
+    reader.handleInput('\x1b[<65;4;2M'); reader.handleInput('j');
+    assert.deepEqual(reader.snapshot.position, beforeSelection); assert.equal(output, frozen);
+    const oldClipboard = await vscode.env.clipboard.readText();
+    try {
+      const expectedVisible = Array.from({ length: reader.screen.rows }, (_, index) => `line ${index}`).join('\n') + '\n';
+      await reader.copyVisibleText();
+      assert.equal(await vscode.env.clipboard.readText(), expectedVisible);
+      assert.equal(output, frozen, 'Copy confirmations must not destroy an active selection');
+      reader.toggleSelection();
+      await reader.openCopyView();
+      const copyEditor = vscode.window.activeTextEditor;
+      assert.ok(copyEditor && copyEditor.document.uri.scheme === 'vscode-reader-copy-test');
+      assert.equal(copyEditor.document.isDirty, false);
+      assert.equal(copyEditor.document.getText(), book.chapters[0].text);
+      assert.doesNotMatch(copyEditor.document.getText(), /Page 1\/1|v resume/);
+      await vscode.commands.executeCommand('workbench.action.closeActiveEditor');
+    } finally { await vscode.env.clipboard.writeText(oldClipboard); }
     let exits = 0;
     const exitSubscription = reader.onDidClose(code => { exits++; assert.equal(code, 0); });
     reader.handleInput('n'); assert.match(output, /next chapter/);
@@ -93,6 +130,7 @@ export async function run(): Promise<void> {
     reader.hide(); assert.match(output, /\x1b\[3J/);
     assert.ok(saved && saved.offset > 0);
     reader.close(); reader.close();
+    assert.ok(transcript.includes(MOUSE_OFF));
     assert.equal(exits, 1, 'Close should acknowledge process exit exactly once');
     exitSubscription.dispose();
     await until(() => !vscode.window.terminals.includes(terminal));
@@ -101,7 +139,7 @@ export async function run(): Promise<void> {
     let earlyExits = 0; resumed.onDidClose(() => { earlyExits++; });
     resumed.close(); resumed.open(); resumed.open();
     assert.equal(earlyExits, 1, 'Closing before open must acknowledge exit when the process starts');
-  } finally { terminal.dispose(); reader.close(); subscription.dispose(); }
+  } finally { terminal.dispose(); reader.close(); subscription.dispose(); copyViews.dispose(); }
   // Exercise the same link provider registered by the extension, including the
   // native image editor and ownership when two sessions have identical markers.
   const imageBook = readFb2(Buffer.from(fb2));

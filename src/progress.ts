@@ -7,19 +7,31 @@ export interface ReadingProgress {
   location: number; locations: number;
   percent: number;
 }
-function lengths(book: Book): number[] { return book.chapters.map(c => Math.max(1, c.text.length)); }
-export function locatorAtOffset(book: Book, offset: number): Locator {
-  const sizes = lengths(book);
-  let remaining = Math.max(0, Math.min(sizes.reduce((a, b) => a + b, 0) - 1, Math.floor(offset)));
-  for (let chapter = 0; chapter < sizes.length; chapter++) {
-    if (remaining < sizes[chapter]) return { chapter, offset: Math.min(remaining, book.chapters[chapter].text.length) };
-    remaining -= sizes[chapter];
+const indexes = new WeakMap<Book, { sizes: number[]; starts: number[]; total: number }>();
+function indexFor(book: Book) {
+  let index = indexes.get(book);
+  if (!index) {
+    const sizes = book.chapters.map(chapter => Math.max(1, chapter.text.length));
+    const starts: number[] = []; let total = 0;
+    for (const size of sizes) { starts.push(total); total += size; }
+    index = { sizes, starts, total }; indexes.set(book, index);
   }
-  return { chapter: 0, offset: 0 };
+  return index;
+}
+export function locatorAtOffset(book: Book, offset: number): Locator {
+  const { sizes, starts, total } = indexFor(book);
+  const absolute = Math.max(0, Math.min(total - 1, Math.floor(offset)));
+  let low = 0, high = sizes.length;
+  while (low < high) {
+    const middle = (low + high) >>> 1;
+    if (starts[middle] <= absolute) low = middle + 1; else high = middle;
+  }
+  const chapter = Math.max(0, low - 1);
+  return { chapter, offset: Math.min(absolute - starts[chapter], book.chapters[chapter].text.length) };
 }
 export function readingProgress(book: Book, locator: Locator, row: number, rows: number, lineCount: number): ReadingProgress {
-  const sizes = lengths(book), total = sizes.reduce((a, b) => a + b, 0);
-  const absolute = sizes.slice(0, locator.chapter).reduce((a, b) => a + b, 0) + Math.min(locator.offset, sizes[locator.chapter] - 1);
+  const { sizes, starts, total } = indexFor(book);
+  const absolute = starts[locator.chapter] + Math.min(locator.offset, sizes[locator.chapter] - 1);
   return {
     chapter: locator.chapter + 1, chapters: sizes.length,
     screen: Math.floor(row / Math.max(1, rows)) + 1, screens: Math.max(1, Math.ceil(lineCount / Math.max(1, rows))),
@@ -29,7 +41,7 @@ export function readingProgress(book: Book, locator: Locator, row: number, rows:
 }
 export function parseLocation(book: Book, input: string): Locator {
   const text = input.trim().replace(',', '.');
-  const total = lengths(book).reduce((a, b) => a + b, 0);
+  const total = indexFor(book).total;
   const pages = book.imagePages ? book.chapters.length : Math.max(1, Math.ceil(total / LOCATION_SIZE));
   if (/^\d+(?:\.\d+)?%$/.test(text)) {
     const percent = Number(text.slice(0, -1));

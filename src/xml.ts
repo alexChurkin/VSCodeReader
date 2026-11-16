@@ -1,7 +1,7 @@
 import { parseDocument } from 'htmlparser2';
 import type { Element, AnyNode } from 'domhandler';
 import { XMLValidator } from 'fast-xml-parser';
-import { safeText } from './book';
+import { safeText, type ImageMarker } from './book';
 
 export function localName(name: string): string { return name.split(':').at(-1)!.toLowerCase(); }
 export function isElement(node: AnyNode): node is Element { return 'name' in node && 'attribs' in node; }
@@ -28,30 +28,34 @@ export function content(node: AnyNode): string {
   }
   return safeText(text).replace(/\s+/g, ' ').trim();
 }
-export function xml(source: string) {
+export function validatedXml(source: string): string {
   // Accept common EPUB HTML/NCX declarations as inert syntax, never load a DTD.
   source = source.replace(/<!DOCTYPE\s+(?:html|ncx)(?:\s+SYSTEM\s+(?:"[^"]*"|'[^']*')|\s+PUBLIC\s+(?:"[^"]*"|'[^']*')\s+(?:"[^"]*"|'[^']*'))?\s*>/gi, '');
   if (/<!\s*(DOCTYPE|ENTITY)\b/i.test(source)) throw new Error('DTD and XML entities are not supported.');
   const valid = XMLValidator.validate(source);
   if (valid !== true) throw new Error(`Invalid XML: ${valid.err.msg}`);
-  return parseDocument(source, { xmlMode: true, decodeEntities: true });
+  return source;
 }
+
+export function xml(source: string) { return parseDocument(validatedXml(source), { xmlMode: true, decodeEntities: true }); }
 
 export interface LinkReference { href: string; offset: number; length: number; label: string; footnote: boolean }
 export interface ImageReference { href: string; label: string; offset: number; length: number }
 export function chapterText(source: string) {
   const doc = parseDocument(source, { decodeEntities: true });
   const body = elements(doc, 'body')[0] ?? doc;
-  return renderNodes(body.children);
+  const title = content(elements(doc, 'h1')[0] ?? elements(doc, 'h2')[0] ?? elements(doc, 'title')[0] ?? doc);
+  return { ...renderNodes(body.children), title };
 }
 export interface HeadingReference { title: string; level: number; offset: number }
-export function renderNodes(nodes: AnyNode[], fb2 = false, markup = false): { text: string; anchors: Record<string, number>; images: ImageReference[]; links: LinkReference[]; headings: HeadingReference[] } {
+export function renderNodes(nodes: AnyNode[], fb2 = false, markup = false): { text: string; anchors: Record<string, number>; images: ImageReference[]; markers: ImageMarker[]; links: LinkReference[]; headings: HeadingReference[] } {
   const ignored = new Set(['script', 'style', 'head', 'iframe', 'object', 'embed', 'form', 'svg', 'audio', 'video']);
   const blocks = new Set([...(fb2 ? ['title', 'subtitle', 'epigraph', 'annotation', 'poem', 'stanza', 'v', 'cite', 'text-author'] : []), 'p', 'div', 'section', 'article', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'li', 'blockquote', 'pre', 'tr', 'dt', 'dd']);
   let output = '';
   let imageSerial = 0;
   const anchors: Record<string, number> = Object.create(null);
   const images: ImageReference[] = [];
+  const markers: ImageMarker[] = [];
   const links: LinkReference[] = [];
   const linkStarts = new Map<AnyNode, Omit<LinkReference, 'length'>>();
   const headings: HeadingReference[] = [];
@@ -76,6 +80,7 @@ export function renderNodes(nodes: AnyNode[], fb2 = false, markup = false): { te
         if (href) {
           const marker = `[image #${++imageSerial}: illustration]`;
           images.push({ href, label: 'illustration', offset: output.length, length: marker.length });
+          markers.push({ offset: output.length, length: marker.length });
           output += marker;
         }
       }
@@ -107,6 +112,7 @@ export function renderNodes(nodes: AnyNode[], fb2 = false, markup = false): { te
       const label = safeText(node.attribs.alt || node.attribs.title || 'illustration').replace(/\s+/g, ' ');
       const marker = `[image #${++imageSerial}: ${label}]`;
       if (href) images.push({ href, label, offset: output.length, length: marker.length });
+      markers.push({ offset: output.length, length: marker.length });
       output += marker;
     }
     else {
@@ -115,5 +121,5 @@ export function renderNodes(nodes: AnyNode[], fb2 = false, markup = false): { te
     }
   }
   // Keep anchor offsets valid: no global trim/collapse after collecting them.
-  return { text: output || '[empty chapter]', anchors, images, links, headings };
+  return { text: output || '[empty chapter]', anchors, images, markers, links, headings };
 }
