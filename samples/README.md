@@ -1,4 +1,28 @@
-# Пример книги для ручной проверки
+# Sample books / Тестовые книги
+
+`formatting.md` and `formatting.fb2` are original synthetic books for both manual
+and automated formatting checks. Open either with **VSCodeReader: Open Book**.
+They cover headings, nested emphasis, strike-through, prose indentation,
+quotations, code, Unicode, tables, images and footnotes. Markdown additionally
+exercises nested/ordered/task lists and Setext headings; FB2 exercises epigraphs,
+named inline styles, verse/stanza breaks and merged/empty cells.
+`formatting.png` is a generated one-pixel image used by Markdown and embedded
+in FB2. Try widths of 120, 80, 40 and 20 columns: tables switch from grids to row
+cards. Ctrl+click images/footnotes, return with `u`, and verify search/copy after
+resizing. Run `node --import tsx test/formatting.test.ts` for automated checks.
+
+`formatting.md` и `formatting.fb2` — собственные синтетические книги для ручных
+и автоматических проверок. Открывайте их через **VSCodeReader: Open Book**.
+Проверяются заголовки, вложенные выделения, зачёркивание, абзацы, цитаты, код,
+Unicode, таблицы, картинки и сноски. В Markdown дополнительно есть списки,
+задачи и заголовки Setext; в FB2 — эпиграфы, именованные inline-стили, стихи со
+строфами, объединённые и пустые ячейки. `formatting.png` — сгенерированная
+картинка 1×1, встроенная также в FB2. Проверьте ширины 120, 80, 40 и 20 колонок,
+Ctrl+клик по картинкам/сноскам, возврат через `u`, поиск и копирование.
+
+All samples are excluded from the VSIX. / Все примеры исключены из VSIX.
+
+## EPUB
 
 `alice-in-wonderland.epub` — Lewis Carroll, *Alice’s Adventures in Wonderland*, иллюстрации John Tenniel. Project Gutenberg, eBook № 11.
 
@@ -13,4 +37,4 @@
 
 Источник указывает статус public domain в США. Уведомления и условия Project Gutenberg сохранены внутри EPUB; перед дальнейшим распространением необходимо учитывать эти условия и права в соответствующей юрисдикции. Лицензия будущего кода расширения не заменяет условия использования этой книги.
 
-Пример предназначен для ручной проверки глав, оглавления, изображений, оформления и восстановления позиции. Для CI планируются небольшие собственные fixtures без сетевой загрузки. При настройке упаковки расширения исключить `samples/**` из VSIX.
+Пример предназначен для ручной проверки глав, оглавления, изображений, оформления и восстановления позиции. CI использует небольшие собственные fixtures без сетевой загрузки.

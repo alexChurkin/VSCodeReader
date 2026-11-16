@@ -1,0 +1,52 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<FictionBook xmlns="http://www.gribuser.ru/xml/fictionbook/2.0" xmlns:l="http://www.w3.org/1999/xlink">
+  <description>
+    <title-info>
+      <genre>other</genre>
+      <author><first-name>Reader</first-name><last-name>Tests</last-name></author>
+      <book-title>Formatting playground</book-title>
+      <lang>en</lang>
+    </title-info>
+    <document-info>
+      <author><first-name>Reader</first-name><last-name>Tests</last-name></author>
+      <date>2026-11-16</date><id>reader-formatting-fixture</id><version>1.0</version>
+    </document-info>
+  </description>
+  <body>
+    <section id="main">
+      <title><p>Formatting playground</p></title>
+      <epigraph><p>Epigraph text.</p><text-author>Epigraph author</text-author></epigraph>
+      <p>Ordinary paragraph with <strong>bold words</strong>, <emphasis>italic words</emphasis>, <strong><emphasis>mixed emphasis</emphasis></strong> and <strikethrough>deleted words</strikethrough>. This paragraph is deliberately long enough to wrap across several visual lines on narrow terminals. Привет, 中文, 👩‍💻.</p>
+      <p>A second paragraph keeps its own first-line indent.</p>
+      <p>A <style name="custom">named style retains <emphasis>nested emphasis</emphasis></style> without losing its text.</p>
+      <subtitle>Quotation and verse</subtitle>
+      <cite><p>Quoted paragraph.</p><text-author>Quote author</text-author></cite>
+      <poem>
+        <stanza><v>First verse line.</v><v>Second <emphasis>verse line</emphasis>.</v></stanza>
+        <stanza><v>Next stanza line.</v><v>Last verse line.</v></stanza>
+        <text-author>Poet name</text-author>
+      </poem>
+      <p><code>if (ready) {
+  print("literal");
+}</code></p>
+      <empty-line/>
+      <p>Footnote reference <a l:href="#note" type="note">[1]</a>.</p>
+      <image l:href="#pixel"/>
+      <section id="tables">
+        <title><p>Tables and references</p></title>
+        <table id="results">
+          <tr><th rowspan="2">Name</th><th colspan="2">Measures</th></tr>
+          <tr><th>Value</th><th>Reference</th></tr>
+          <tr><td>中文 👩‍💻</td><td><strong>Bold cell</strong> with many words to exercise wrapping without losing content.</td><td><a l:href="#note" type="note">[1]</a></td></tr>
+          <tr><td>Second</td><td><emphasis>Italic cell</emphasis></td><td><image l:href="#pixel"/></td></tr>
+          <tr><td>Empty</td><td></td><td>Last cell</td></tr>
+        </table>
+        <p>Final paragraph.</p>
+      </section>
+    </section>
+  </body>
+  <body name="notes">
+    <section id="note"><title><p>Note</p></title><p>Note body with <strong>bold note</strong>.</p></section>
+  </body>
+  <binary id="pixel" content-type="image/png">iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGP4z8DwHwAFAAH/iZk9HQAAAABJRU5ErkJggg==</binary>
+</FictionBook>

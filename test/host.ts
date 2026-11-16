@@ -266,6 +266,38 @@ async function runChecks(): Promise<void> {
     const source = rich.snapshot.position;
     rich.setDimensions({ columns: 100, rows: 60 }); assert.deepEqual(rich.snapshot.position, source);
   } finally { rich.close(); richTerminal.dispose(); richOutputSubscription.dispose(); richCancellation.dispose(); }
+  for (const format of ['fb2', 'md']) {
+    const bytes: Buffer = await readFile(join(extension.extensionPath, 'samples', `formatting.${format}`));
+    const book: Book = format === 'fb2' ? readFb2(bytes) : readMarkup(bytes, 'formatting.md').book;
+    const reader: ReaderTerminal = new ReaderTerminal(book, '', restoreState(undefined, book), () => {}, async () => {});
+    let frame = '';
+    const subscription = reader.onDidWrite(value => { frame = value; });
+    const terminal = vscode.window.createTerminal({ name: `formatting-${format}`, pty: reader });
+    const cancellation = new vscode.CancellationTokenSource();
+    try {
+      terminal.show(); await until(() => frame.includes('Formatting playground'));
+      reader.setDimensions({ columns: 120, rows: 150 });
+      assert.match(frame, /\x1b\[1;4mFormatting playground/);
+      assert.match(frame, /\x1b\[1;3mmixed emphasis/);
+      assert.match(frame, /\x1b\[9mdeleted words/);
+      assert.match(frame.replace(/\x1b\[[0-9;]*[A-Za-z]/g, ''), /\r\n {4}Ordinary paragraph/);
+      if (format === 'fb2') assert.match(frame, /named style retains/);
+      const tableChapter = book.chapters.findIndex(item => item.tables?.length);
+      reader.goTo({ chapter: tableChapter, offset: book.chapters[tableChapter].tables![0].offset });
+      assert.match(frame, /\+---/);
+      assert.match(frame, /\x1b\[1mBold cell/);
+      assert.match(frame, /\x1b\[3mItalic cell/);
+      const provider = new ReaderLinks(candidate => candidate === terminal ? reader : undefined);
+      const links = frame.replace(/\x1b\[[0-9;]*[A-Za-z]/g, '').split('\r\n').flatMap(line => provider.provideTerminalLinks({ terminal, line }, cancellation.token));
+      assert.ok(links.some(link => link.kind === 'image'));
+      const reference = links.find(link => link.kind === 'footnote'); assert.ok(reference);
+      const position = reader.snapshot.position;
+      await provider.handleTerminalLink(reference); assert.notDeepEqual(reader.snapshot.position, position);
+      reader.travel(-1); assert.deepEqual(reader.snapshot.position, position);
+      reader.setDimensions({ columns: 30, rows: 150 }); assert.match(frame, /Row/);
+      assert.deepEqual(reader.snapshot.position, position);
+    } finally { reader.close(); terminal.dispose(); subscription.dispose(); cancellation.dispose(); }
+  }
   // Exercise real extension activation, worker, terminal creation, and resume command.
   const sample = vscode.Uri.joinPath(extension.extensionUri, 'samples', 'alice-in-wonderland.epub');
   const previous = new Set(vscode.window.terminals);

@@ -3,6 +3,9 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import stringWidth from 'string-width';
 import { readEpub } from '../src/epub';
+import { readFb2 } from '../src/fb2';
+import { readBook, extractImage } from '../src/formats';
+import { cleanPassage } from '../src/copy';
 import { readMarkup } from '../src/markup';
 import { Screen } from '../src/screen';
 import { BookSearch } from '../src/search';
@@ -121,4 +124,91 @@ void test('conditional CSS and generated content never hide or inject book text'
   assert.match(book.chapters[0].text, /Visible emphasis/);
   assert.doesNotMatch(book.chapters[0].text, /injected|https:/);
   assert.ok(styled(book.chapters[0], 'Visible').some(span => span.bold));
+});
+
+for (const format of ['fb2', 'md'] as const) {
+  void test(`${format} playground preserves semantic styles, prose indents, tables, links and anchors through reflow`, async () => {
+    const bytes = await readFile(`samples/formatting.${format}`);
+    const result = await readBook(bytes, { filename: `formatting.${format}` });
+    assert.equal(result.kind, 'book'); if (result.kind !== 'book') return;
+    const book = result.book, chapter = book.chapters[0];
+    assert.ok(styled(chapter, 'Formatting playground').some(span => span.bold && span.underline));
+    assert.ok(styled(chapter, 'bold words').some(span => span.bold));
+    assert.ok(styled(chapter, 'italic words').some(span => span.italic));
+    assert.ok(styled(chapter, 'mixed emphasis').some(span => span.bold && span.italic));
+    assert.ok(styled(chapter, 'deleted words').some(span => span.strike));
+    assert.ok(!styled(chapter, 'This paragraph').some(span => span.bold || span.italic || span.strike));
+    assert.doesNotMatch(chapter.text, /\x1b/);
+    const prose = chapter.paragraphs!.map(span => chapter.text.slice(span.offset, span.offset + span.length));
+    assert.ok(prose.some(text => text.startsWith('Ordinary paragraph')));
+    assert.ok(prose.some(text => text.startsWith('A second paragraph')));
+    assert.ok(prose.every(text => !/Quoted paragraph|First list item|Nested list|Completed task|if \(ready\)|First verse/.test(text)));
+    const first = new Screen(book, '', { chapter: 0, offset: 0 }); first.resize(100, 100);
+    assert.equal(first.lines[0].text, 'Formatting playground');
+    assert.match(strip(first.render()), /\r\n {4}Ordinary paragraph/);
+    assert.match(first.render(), /\x1b\[1;3mmixed emphasis/);
+    assert.match(first.render(), /\x1b\[9mdeleted words/);
+    assert.doesNotMatch(cleanPassage(chapter), / {4}Ordinary paragraph/);
+    for (const [index, item] of book.chapters.entries()) {
+      if (!item.tables?.length) continue;
+      assert.ok(styled(item, 'Bold cell').some(span => span.bold));
+      assert.ok(styled(item, 'Italic cell').some(span => span.italic));
+      for (const width of [120, 80, 40, 20, 5]) assertCellsSurvive(book, index, width);
+      const screen = assertCellsSurvive(book, index, 120);
+      const frame = strip(screen.render()).split('\r\n');
+      const table = item.tables[0];
+      const note = frame.flatMap(line => screen.footnoteLinks(line)).find(link => item.footnotes?.some(ref => ref.id === link.id && ref.offset >= table.offset && ref.offset < table.offset + table.length));
+      assert.ok(note, 'A table footnote must be clickable');
+      const image = frame.flatMap(line => screen.imageLinks(line));
+      assert.ok(image.length, 'A table image must be clickable');
+      const offset = item.text.indexOf('wrapping');
+      const search = new BookSearch(book, 'wrapping');
+      search.align({ chapter: index, offset });
+      screen.go({ chapter: index, offset });
+      for (const width of [100, 40, 20, 80]) {
+        screen.resize(width, 200); assert.deepEqual(screen.locator, { chapter: index, offset });
+        assert.match(screen.render(search.highlights(index)), /\x1b\[7mwrapping/);
+      }
+    }
+    assert.ok(book.chapters.some(item => item.footnotes?.length));
+    const image = await extractImage(bytes, { filename: `formatting.${format}`, documentPath: `${process.cwd()}/samples/formatting.${format}` }, book.images![0].id);
+    assert.equal(image.width, 1); assert.equal(image.height, 1);
+  });
+}
+
+void test('FB2 named inline styles keep text; XML indentation, verse, quotations and code retain their structure', async () => {
+  const bytes = await readFile('samples/formatting.fb2');
+  const book = readFb2(bytes), chapter = book.chapters[0];
+  assert.match(chapter.text, /A named style retains nested emphasis without losing its text/);
+  assert.ok(styled(chapter, 'nested emphasis').some(span => span.italic));
+  assert.match(chapter.text, /First verse line\.\nSecond verse line\.\n\nNext stanza line\.\nLast verse line\.\n\nPoet name/);
+  assert.match(chapter.text, /if \(ready\) \{\n  print\("literal"\);\n\}/);
+  assert.match(chapter.text, /(?:^|\n)> Epigraph text/);
+  assert.match(chapter.text, /(?:^|\n)> Quoted paragraph/);
+  assert.ok(styled(chapter, 'Quote author').some(span => span.italic));
+  assert.equal(chapter.anchors.tables, chapter.text.indexOf('Tables and references'));
+  const prefixed = bytes.toString().replace(/<(\/?)([A-Za-z][\w-]*)(?=[\s/>])/g, '<$1f:$2').replace('<f:FictionBook ', '<f:FictionBook xmlns:f="http://www.gribuser.ru/xml/fictionbook/2.0" ');
+  assert.deepEqual(readFb2(Buffer.from(prefixed)), book, 'Namespace prefixes must not change formatting or offsets');
+  for (const filename of ['formatting.fb2.zip', 'formatting.fbz']) {
+    const result = await readBook(zip([['books/formatting.fb2', bytes]]), { filename });
+    assert.equal(result.kind, 'book');
+    if (result.kind === 'book') assert.deepEqual(result.book, book);
+  }
+});
+
+void test('Markdown playground retains nested lists, tasks, literal code, Setext headings and styled notes', async () => {
+  const { book } = readMarkup(await readFile('samples/formatting.md'), 'formatting.md');
+  const text = book.chapters.map(chapter => chapter.text).join('');
+  assert.match(text, /(?:^|\n)- First list item/);
+  assert.match(text, /(?:^|\n) {2}- Nested list item/);
+  assert.match(text, /(?:^|\n)3\. Third numbered item/);
+  assert.match(text, /(?:^|\n)\[x\] Completed task/);
+  assert.match(text, /(?:^|\n)\[ \] Pending task/);
+  assert.match(text, /a  \+  b/);
+  assert.match(text, /if \(ready\) \{\n  print\("\*\*literal\*\*, <em>not HTML<\/em>, \[\^not-a-note\]"\);\n\}/);
+  assert.ok(book.toc.some(item => item.title === 'Setext heading'));
+  const notes = book.chapters.find(chapter => chapter.text.includes('bold note'))!;
+  assert.ok(styled(notes, 'bold note').some(span => span.bold));
+  assert.match(notes.text, /Continued note text/);
+  assert.ok(book.chapters.flatMap(chapter => chapter.footnotes ?? []).every(note => !JSON.stringify(note).includes('not-a-note')));
 });

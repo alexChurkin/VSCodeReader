@@ -52,7 +52,9 @@ export function documentText(doc: { children: AnyNode[] }, rules: CssRule[] = []
 }
 export interface HeadingReference { title: string; level: number; offset: number }
 export function renderNodes(nodes: AnyNode[], fb2 = false, markup = false, rules: CssRule[] = []): { text: string; anchors: Record<string, number>; images: ImageReference[]; markers: ImageMarker[]; links: LinkReference[]; headings: HeadingReference[]; styles: StyleSpan[]; tables: BookTable[]; paragraphs: Array<{ offset: number; length: number }> } {
-  const ignored = new Set(['script', 'style', 'head', 'iframe', 'object', 'embed', 'form', 'svg', 'audio', 'video']);
+  markup ||= fb2;
+  // FB2 <style name="…"> contains readable inline text, unlike HTML <style>.
+  const ignored = new Set(['script', fb2 ? 'stylesheet' : 'style', 'head', 'iframe', 'object', 'embed', 'form', 'svg', 'audio', 'video']);
   const blocks = new Set([...(fb2 ? ['title', 'subtitle', 'epigraph', 'annotation', 'poem', 'stanza', 'v', 'cite', 'text-author'] : []), 'p', 'div', 'section', 'article', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'li', 'blockquote', 'pre', 'caption', 'tr', 'dt', 'dd']);
   let output = '';
   let imageSerial = 0;
@@ -80,7 +82,7 @@ export function renderNodes(nodes: AnyNode[], fb2 = false, markup = false, rules
     else styles.push({ offset, length: text.length, bold: style.bold, italic: style.italic, underline: style.underline, strike: style.strike });
   };
   const listCounters = new Map<AnyNode, number>();
-  const boundary = () => { if (output && !output.endsWith('\n')) output += '\n\n'; };
+  const boundary = (lines = 2) => { if (output && !output.endsWith('\n')) output += '\n'.repeat(lines); };
   const stack: Array<{ node: AnyNode; end?: boolean; pre?: boolean; inherited: Presentation; resolved?: Presentation }> = [...nodes].reverse().map(node => ({ node, inherited: plainPresentation }));
   while (stack.length) {
     const { node, end, pre, inherited, resolved } = stack.pop()!;
@@ -136,9 +138,11 @@ export function renderNodes(nodes: AnyNode[], fb2 = false, markup = false, rules
       const row = rowNodes.get(node); if (row) row.end = output.length;
       const table = tableNodes.get(node);
       if (table) { table.length = output.length - table.offset; tableStack.pop(); }
-      if (blocks.has(tag)) boundary(); continue;
+      if (blocks.has(tag)) boundary(fb2 && tag === 'v' ? 1 : 2);
+      if (fb2 && tag === 'stanza' && output.endsWith('\n') && !output.endsWith('\n\n')) output += '\n';
+      continue;
     }
-    if (blocks.has(tag) && !(markup && tag === 'p' && /(?:- |\d+\. |\[[ x]\] )$/.test(output))) boundary();
+    if (blocks.has(tag) && !(markup && tag === 'p' && /(?:- |\d+\. |\[[ x]\] )$/.test(output))) boundary(fb2 && tag === 'v' ? 1 : 2);
     if (tag === 'table') {
       boundary();
       const table: BookTable = { offset: output.length, length: 0, columns: 0, rows: [] };
@@ -173,7 +177,8 @@ export function renderNodes(nodes: AnyNode[], fb2 = false, markup = false, rules
       headings.push({ title: content(node) || 'Section', level: style.heading, offset: output.length });
     }
     if (tag === 'p' && !style.listItem && !style.heading && !style.quote && !style.pre && !style.hanging && !tableStack.length) {
-      let ordinary = true;
+      const visibleChildren = node.children.filter(child => child.type !== 'text' || child.data.trim());
+      let ordinary = !visibleChildren.length || !visibleChildren.every(child => isElement(child) && localName(child.name) === 'code');
       let ancestor: AnyNode | null = node;
       while (ancestor && isElement(ancestor)) {
         if (['li', 'ul', 'ol', 'dl', 'dt', 'dd', 'blockquote', 'pre', 'code', 'table', 'caption', 'figure', 'figcaption', 'nav', 'poem', 'stanza', 'v', 'title', 'subtitle', 'epigraph'].includes(localName(ancestor.name))

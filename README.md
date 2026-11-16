@@ -11,7 +11,7 @@ The current **0.1.0** build supports EPUB, FictionBook, plain text, CBZ comics, 
 | Format | Support |
 | --- | --- |
 | EPUB 2 / EPUB 3 (`.epub`) | Styled headings and emphasis, lists, adaptive tables, spine order, nav/NCX contents and embedded raster images |
-| FictionBook 2 (`.fb2`) | Metadata, nested sections, poems, notes as sections, embedded base64 images; XML-declared encodings including Windows-1251 |
+| FictionBook 2 (`.fb2`) | Styled titles/subtitles, strong/emphasis/strike-through, prose indents, poems, quotations, adaptive tables, footnotes and embedded base64 images; XML-declared encodings including Windows-1251 |
 | FB2.ZIP / FBZ (`.fb2.zip`, `.fbz`) | One or multiple FB2 books; choose an entry when an archive contains several books |
 | Plain text (`.txt`) | UTF-8, UTF-16 BOM and configurable Windows-1251; long files split into navigable parts |
 | HTML (`.html`, `.htm`) | Styled headings as chapters, emphasis, lists, adaptive tables, code blocks and local or base64 images |
@@ -84,9 +84,13 @@ Position and bookmark data stay local. Changing the source file starts a new rea
 
 The terminal retains document structure: headings stay flush left and use bold/underlined text; ordinary paragraphs have a four-cell first-line indent (reduced in narrow columns). Only their first visual line is indented; list items, hanging/manual lists, tables, quotes, code, verse, captions and contents keep their own layout. The indent is display-only and does not add spaces to the source, search offsets or copied text; bold, italic, underline and strike-through spans are preserved. Lists have visible bullets/numbers, nested indentation and ordered-list starts. Quotes have a visible prefix; preformatted/code blocks retain whitespace.
 
+FB2 and Markdown use the same terminal style and table renderer. FB2 preserves `strong`, `emphasis`, `strikethrough`, nested inline styles, verse lines and stanza breaks; epigraphs and citations have quote prefixes. FB2 named `<style>` elements retain their text, but named stylesheets are not interpreted. Markdown supports nested emphasis, GFM task lists/tables, Setext headings and literal fenced code; syntax coloring is not implemented. FB2/HTML superscripts and subscripts remain ordinary baseline text.
+
 EPUB loads local linked stylesheets and inline styles. The supported text-only CSS subset includes tag/class/ID selectors, descendant and child selectors, inheritance, inline declarations, `!important`, font weight/style/size, underline/strike-through, white-space and hidden text. Variable-font `wght`, `slnt` and `ital` settings are mapped to terminal emphasis. Publisher paragraph classes such as `Heading-2` and bold enlarged paragraphs are recognized as headings, including InDesign-style exports. Stylesheets are capped at 1 MiB each and 5,000 combined rules per document. Remote styles/imports and font files are not loaded; fonts, colors and the terminal theme remain under VS Code's control.
 
 Tables use bounded column grids with wrapped cell contents. When columns would become too narrow, each row switches to a vertical card with column labels. Captions, empty cells and merged-cell column positions are retained. Grid borders and card labels are display elements, with source mappings for search, image/internal links and reading anchors. Resizing changes layout without changing text page numbers or the exact source position. This is a terminal representation rather than browser CSS layout; nested tables are flattened inside their outer cells.
+
+Try the original [Markdown](samples/formatting.md) and [FB2](samples/formatting.fb2) formatting playgrounds with **Open Book**. Keep `formatting.png` beside the Markdown file; the FB2 image is embedded.
 
 ## Mouse, selection and copying
 
@@ -142,6 +146,8 @@ npm run package      # VSIX without samples, tests or node_modules
 npm run benchmark    # cold wrapping, 1,000 cached jumps and 100 redraws
 # Optional local regression against a private debug EPUB:
 READER_DEBUG_EPUB=/path/to/book.epub node --import tsx test/formatting.test.ts
+# FB2 / Markdown formatting fixtures (also included in npm run check):
+node --import tsx test/formatting.test.ts
 ```
 
 The project uses TypeScript and the VS Code API, with Node.js scripts and esbuild for bundling. ESLint uses the recommended JavaScript/TypeScript rules plus type-aware checks for unhandled promises, async callbacks and invalid `await`. TypeScript also checks missing return paths and switch fallthrough. `npm run check` and the VS Code host tests must pass in GitHub Actions before the release is updated. The ESLint editor extension is recommended in this workspace. TypeScript 6 is pinned to match the supported typescript-eslint peer range.

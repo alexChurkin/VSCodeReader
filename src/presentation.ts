@@ -86,8 +86,11 @@ export function presentation(node: Element, inherited: Presentation, rules: CssR
   if (['i', 'em', 'cite'].includes(tag)) style.italic = true;
   if (['u', 'ins'].includes(tag)) style.underline = true;
   if (['s', 'del', 'strike'].includes(tag)) style.strike = true;
+  if (fb2 && tag === 'emphasis') style.italic = true;
+  if (fb2 && tag === 'strikethrough') style.strike = true;
+  if (fb2 && tag === 'text-author') style.italic = true;
   if (tag === 'pre') style.pre = true;
-  if (tag === 'blockquote' || /(?:^|\s)quote(?:\s|$)/i.test(node.attribs.class ?? '')) style.quote++;
+  if (tag === 'blockquote' || (fb2 && ['cite', 'epigraph'].includes(tag)) || /(?:^|\s)quote(?:\s|$)/i.test(node.attribs.class ?? '')) style.quote++;
   const values = new Map<string, { value: string; priority: number }>();
   const apply = (properties: Record<string, string>, weight: number) => {
     for (const [property, raw] of Object.entries(properties)) {
