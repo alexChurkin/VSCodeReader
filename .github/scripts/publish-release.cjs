@@ -15,6 +15,7 @@ module.exports = async function publishRelease({ github, context, root = process
   const main = await github.rest.git.getRef({ ...repo, ref: 'heads/main' });
   if (main.data.object.sha !== context.sha) return { skipped: true };
   const tag = 'v0.1.0';
+  const title = `VSCodeReader ${manifest.version} · code ${context.sha.slice(0, 12)}`;
   let release;
   try { release = (await github.rest.repos.getReleaseByTag({ ...repo, tag })).data; }
   catch (error) {
@@ -31,7 +32,7 @@ module.exports = async function publishRelease({ github, context, root = process
     await github.rest.git.createRef({ ...repo, ref: `refs/tags/${tag}`, sha: context.sha });
   }
   const body = `${notes.trim()}\n\nBuild commit: [${context.sha.slice(0, 7)}](https://github.com/${repo.owner}/${repo.repo}/commit/${context.sha})\n\nSHA-256: \`${checksum}\`\n`;
-  if (!release) release = (await github.rest.repos.createRelease({ ...repo, tag_name: tag, target_commitish: context.sha, name: 'VSCodeReader 0.1.0', body, draft: true, prerelease: false })).data;
+  if (!release) release = (await github.rest.repos.createRelease({ ...repo, tag_name: tag, target_commitish: context.sha, name: title, body, draft: true, prerelease: false })).data;
   const assets = await github.paginate(github.rest.repos.listReleaseAssets, { ...repo, release_id: release.id, per_page: 100 });
   const upload = async (filename, data, contentType) => {
     const stagedName = `${filename}.upload-${context.sha.slice(0, 12)}`;
@@ -54,6 +55,6 @@ module.exports = async function publishRelease({ github, context, root = process
   }
   await github.rest.repos.updateReleaseAsset({ ...repo, asset_id: vsix.id, name });
   await github.rest.repos.updateReleaseAsset({ ...repo, asset_id: hash.id, name: name + '.sha256' });
-  const published = await github.rest.repos.updateRelease({ ...repo, release_id: release.id, tag_name: tag, target_commitish: context.sha, name: 'VSCodeReader 0.1.0', body, draft: false, prerelease: false, make_latest: 'true' });
+  const published = await github.rest.repos.updateRelease({ ...repo, release_id: release.id, tag_name: tag, target_commitish: context.sha, name: title, body, draft: false, prerelease: false, make_latest: 'true' });
   return { url: published.data.html_url };
 };

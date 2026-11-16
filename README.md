@@ -26,7 +26,7 @@ Ordinary `.zip` files are not treated as books. PDF and MOBI/AZW3 are not suppor
 2. Click the **book icon** in the left Activity Bar to open **Reader → Library**.
 3. Click **Open book…** and choose a supported file. Click **Continue reading** to resume later.
 
-Successful checks on `main` automatically update the single [GitHub Release 0.1.0](https://github.com/alexChurkin/VSCodeReader/releases/tag/v0.1.0), its VSIX and SHA-256 checksum.
+Successful checks on `main` automatically update the single [GitHub Release 0.1.0](https://github.com/alexChurkin/VSCodeReader/releases/tag/v0.1.0), its VSIX and SHA-256 checksum. The release title includes the current 12-character Git commit SHA, for example `VSCodeReader 0.1.0 · code abc123def456`; its description links to the full commit. The extension version and download URL stay stable.
 
 The version stays at **0.1.0**; each package build replaces `vscode-reader-0.1.0.vsix` and removes obsolete project VSIX files.
 
@@ -93,10 +93,14 @@ Reader settings apply to new sessions. Close and reopen a book to change its tex
 ## Development and checks
 
 ```sh
-npm run check        # typecheck, unit tests, extension and parser worker build
+npm run lint         # ESLint for TypeScript, JavaScript and release scripts; zero warnings
+npm run lint:fix     # apply safe automatic lint fixes
+npm run check        # lint, strict typecheck, unit tests, extension and parser worker build
 npm run test:host    # integration checks in VS Code 1.95.3
 npm run package      # VSIX without samples, tests or node_modules
 ```
+
+The project uses TypeScript and the VS Code API, with Node.js scripts and esbuild for bundling. ESLint uses the recommended JavaScript/TypeScript rules plus type-aware checks for unhandled promises, async callbacks and invalid `await`. TypeScript also checks missing return paths and switch fallthrough. `npm run check` and the VS Code host tests must pass in GitHub Actions before the release is updated. The ESLint editor extension is recommended in this workspace. TypeScript 6 is pinned to match the supported typescript-eslint peer range.
 
 The host test runs VS Code twice to verify that positions and named bookmarks survive a full restart. It downloads VS Code on its first run. Linux needs Electron libraries and a display (`xvfb-run` in CI). Set `VSCODE_TEST_VERSION` to test another VS Code version. Tests use synthetic books and the included EPUB; they do not download books.
 

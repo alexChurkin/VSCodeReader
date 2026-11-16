@@ -18,7 +18,8 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
-      - run: npm run check
+      - name: Lint, strict types, unit tests and build
+        run: npm run check
       - run: xvfb-run -a npm run test:host
       - run: npm run package
       - uses: actions/upload-artifact@v4

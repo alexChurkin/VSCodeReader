@@ -9,7 +9,7 @@ import { zip } from './fixtures';
 
 import { png, fb2 } from './fixtures';
 
-test('FB2 metadata, nested TOC, notes, poetry and image references', async () => {
+void test('FB2 metadata, nested TOC, notes, poetry and image references', async () => {
   const result = await readBook(Buffer.from(fb2), { filename: 'test.fb2' });
   assert.equal(result.kind, 'book'); if (result.kind !== 'book') return;
   const book = result.book;
@@ -25,7 +25,7 @@ test('FB2 metadata, nested TOC, notes, poetry and image references', async () =>
   const image = await extractImage(Buffer.from(fb2), { filename: 'test.fb2' }, 'picture');
   assert.equal(image.width, 1); assert.equal(image.height, 1); assert.deepEqual(Buffer.from(image.bytes), png);
 });
-test('FB2 Windows-1251 declaration, UTF-16 BOM, malformed XML and missing body', () => {
+void test('FB2 Windows-1251 declaration, UTF-16 BOM, malformed XML and missing body', () => {
   const template = '<?xml version="1.0" encoding="windows-1251"?><FictionBook><body><section><p>';
   const bytes = Buffer.concat([Buffer.from(template), Buffer.from([0xcf, 0xf0, 0xe8, 0xe2, 0xe5, 0xf2]), Buffer.from('</p></section></body></FictionBook>')]);
   assert.match(readFb2(bytes).chapters[0].text, /Привет/);
@@ -37,7 +37,7 @@ test('FB2 Windows-1251 declaration, UTF-16 BOM, malformed XML and missing body',
   assert.throws(() => readFb2(Buffer.from('<html/>')), /FictionBook/);
   assert.throws(() => readFb2(Buffer.from('<!DOCTYPE FictionBook [<!ENTITY x "evil">]><FictionBook/>')), /DTD/);
 });
-test('FB2.ZIP selection, independent entries, single FBZ and image extraction', async () => {
+void test('FB2.ZIP selection, independent entries, single FBZ and image extraction', async () => {
   const bytes = zip([['folder/a.fb2', fb2], ['b.fb2', fb2.replace('Тестовая книга', 'Другая книга')], ['readme.txt', 'ignored']]);
   const choose = await readBook(bytes, { filename: 'two.fb2.zip' });
   assert.equal(choose.kind, 'selection'); if (choose.kind !== 'selection') return;
@@ -53,7 +53,7 @@ test('FB2.ZIP selection, independent entries, single FBZ and image extraction', 
   await assert.rejects(readBook(zip([['readme.txt', 'text']]), { filename: 'none.fb2.zip' }), /no FB2/);
   await assert.rejects(readBook(bytes, { filename: 'ordinary.zip' }), /Unsupported/);
 });
-test('TXT UTF-8, Windows-1251 and UTF-16 BOM, chunking, controls and empty text', () => {
+void test('TXT UTF-8, Windows-1251 and UTF-16 BOM, chunking, controls and empty text', () => {
   const text = readTxt(Buffer.from('Hello\r\n\r\nПривет\x1b[2J'), 'book.txt');
   assert.match(text.chapters[0].text, /Hello\n\nПривет/); assert.doesNotMatch(text.chapters[0].text, /\x1b/);
   assert.equal(readTxt(Buffer.from([0xcf, 0xf0, 0xe8, 0xe2, 0xe5, 0xf2]), 'ru.txt', 'windows-1251').chapters[0].text, 'Привет');
@@ -66,7 +66,7 @@ test('TXT UTF-8, Windows-1251 and UTF-16 BOM, chunking, controls and empty text'
   assert.throws(() => readTxt(Buffer.from([0xff, 0x80]), 'bad.txt'), /Cannot decode/);
   assert.throws(() => readTxt(Buffer.from('  \n'), 'empty.txt'), /empty/);
 });
-test('CBZ pages sort numerically and select raster images only', async () => {
+void test('CBZ pages sort numerically and select raster images only', async () => {
   const bytes = zip([['page10.png', png], ['page2.png', png], ['script.svg', '<svg/>'], ['page1.png', png]]);
   const result = await readBook(bytes, { filename: 'comic.cbz' });
   assert.equal(result.kind, 'book'); if (result.kind !== 'book') return;
@@ -74,7 +74,7 @@ test('CBZ pages sort numerically and select raster images only', async () => {
   assert.deepEqual(result.book.images?.[1].chapters, [1]);
   assert.deepEqual(Buffer.from((await extractImage(bytes, { filename: 'comic.cbz' }, 'page2.png')).bytes), png);
 });
-test('EPUB sample images can be extracted on demand', async () => {
+void test('EPUB sample images can be extracted on demand', async () => {
   const bytes = await readFile('samples/alice-in-wonderland.epub');
   const result = await readBook(bytes, { filename: 'alice.epub' });
   assert.equal(result.kind, 'book'); if (result.kind !== 'book') return;
@@ -82,7 +82,7 @@ test('EPUB sample images can be extracted on demand', async () => {
   const image = await extractImage(bytes, { filename: 'alice.epub' }, result.book.images![0].id);
   assert.ok(image.width > 0); assert.equal(image.extension, 'jpg');
 });
-test('image validation rejects SVG, spoofed formats, huge dimensions and malformed base64', async () => {
+void test('image validation rejects SVG, spoofed formats, huge dimensions and malformed base64', async () => {
   assert.throws(() => validateImage(Buffer.from('<svg onload="evil()"/>')), /Unsupported/);
   const huge = Buffer.from(png); huge.writeUInt32BE(100_000, 16);
   assert.throws(() => validateImage(huge), /oversized/);

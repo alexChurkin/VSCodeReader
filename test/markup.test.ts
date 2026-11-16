@@ -10,7 +10,7 @@ import { png } from './fixtures';
 
 const asText = (book: ReturnType<typeof readMarkup>['book']) => book.chapters.map(c => c.text).join('');
 
-test('HTML title, author, headings, entities, nested TOC and inert content', async () => {
+void test('HTML title, author, headings, entities, nested TOC and inert content', async () => {
   const source = '<!DOCTYPE html><html><head><title>A &amp; B</title><meta name="author" content="Writer"><style>evil-style</style></head><body><p>Preface</p><h1 id="a">Main</h1><p>Text &amp; entities.<br>Next line.</p><h2>Child</h2><p>Child text</p><h3 hidden>Hidden</h3><p hidden>secret</p><script>evil-script</script><template>evil-template</template><iframe>evil-frame</iframe></body></html>';
   const result = await readBook(Buffer.from(source), { filename: 'test.HTML' });
   assert.equal(result.kind, 'book'); if (result.kind !== 'book') return;
@@ -23,7 +23,7 @@ test('HTML title, author, headings, entities, nested TOC and inert content', asy
   assert.equal(book.chapters[book.toc[0].chapter].anchors.a, 0);
   assert.equal(supportedBook('test.HTM'), true);
 });
-test('Markdown ATX and Setext headings, fenced code, lists, tasks and tables', async () => {
+void test('Markdown ATX and Setext headings, fenced code, lists, tasks and tables', async () => {
   const source = '# First\n\nRead **bold** and [link](https://example.com).\n\n## Code\n\n```ts\nif (x) {\n  console.log("<script>literal</script>");\n}\n```\n\n- item one\n- item two\n\n3. third\n4. fourth\n\n- [x] finished\n- [ ] pending\n\n| Name | Value |\n| --- | --- |\n| alpha | beta |\n\nLast\n====\n\nThe end.';
   const result = await readBook(Buffer.from(source), { filename: 'test.markdown' });
   assert.equal(result.kind, 'book'); if (result.kind !== 'book') return;
@@ -37,7 +37,7 @@ test('Markdown ATX and Setext headings, fenced code, lists, tasks and tables', a
   assert.match(text, /Name \| Value \|/); assert.match(text, /alpha \| beta \|/);
   assert.doesNotMatch(text, /\*\*bold\*\*/);
 });
-test('Markup encoding: HTML meta charset, configurable Markdown, BOM priority', () => {
+void test('Markup encoding: HTML meta charset, configurable Markdown, BOM priority', () => {
   const hello = Buffer.from([0xcf, 0xf0, 0xe8, 0xe2, 0xe5, 0xf2]);
   const html = Buffer.concat([Buffer.from('<meta charset="windows-1251"><h1>'), hello, Buffer.from('</h1>')]);
   assert.equal(readMarkup(html, 'ru.html').book.title, 'Привет');
@@ -47,7 +47,7 @@ test('Markup encoding: HTML meta charset, configurable Markdown, BOM priority', 
   const utf16 = Buffer.concat([Buffer.from([0xff, 0xfe]), Buffer.from('# Текст', 'utf16le')]);
   assert.equal(readMarkup(utf16, 'utf16.md').book.title, 'Текст');
 });
-test('Local and embedded images are mapped to the correct section; remote and SVG are inert', async () => {
+void test('Local and embedded images are mapped to the correct section; remote and SVG are inert', async () => {
   const data = `data:image/png;base64,${png.toString('base64')}`;
   const source = `# One\n\n![Local](assets/pic.png)\n\n## Two\n\n![Inline](${data})\n\n![Again](assets/pic.png)\n\n![Remote](https://example.com/tracker.png)\n\n![SVG](assets/active.svg)`;
   const options = { filename: 'test.md' };
@@ -62,12 +62,12 @@ test('Local and embedded images are mapped to the correct section; remote and SV
   const invalid = Buffer.from('![Bad](data:image/png;base64,%%%)');
   await assert.rejects(extractImage(invalid, options, 'image-0'), /base64/);
 });
-test('Image paths reject traversal, schemes, absolute paths, controls and encoded separators', () => {
+void test('Image paths reject traversal, schemes, absolute paths, controls and encoded separators', () => {
   for (const path of ['../secret.png', '%2e%2e/secret.png', '/secret.png', '//example.com/a.png', 'C:/secret.png', 'file:///a.png', 'https://example.com/a.png', 'javascript:evil', 'assets\\a.png', '%5c%5cserver/a.png', 'assets/a.png%00', 'foo%3Abar.png']) assert.throws(() => localImagePath(path), path);
   assert.equal(localImagePath('./assets/picture%20one.png?query#fragment'), 'assets/picture one.png');
   assert.equal(localImagePath('assets/../picture.png'), 'picture.png');
 });
-test('Local images load only from real files within the document folder, including symlink checks', async () => {
+void test('Local images load only from real files within the document folder, including symlink checks', async () => {
   const root = await mkdtemp(join(tmpdir(), 'reader-markup-'));
   try {
     const folder = join(root, 'book'); await mkdir(join(folder, 'assets'), { recursive: true });
@@ -87,7 +87,7 @@ test('Local images load only from real files within the document folder, includi
     const result = await extractImage(source, options, 'image-0'); assert.equal(result.width, 1);
   } finally { await rm(root, { recursive: true, force: true }); }
 });
-test('Huge unheaded sections are split, headings in code stay literal, controls stay inert', () => {
+void test('Huge unheaded sections are split, headings in code stay literal, controls stay inert', () => {
   const source = `<pre># not a heading\n  indentation</pre><p>${'word '.repeat(30_000)}</p>`;
   const { book } = readMarkup(Buffer.from(source), 'long.html');
   assert.ok(book.chapters.length > 1); assert.ok(book.chapters.every(c => c.text.length <= 64_000));

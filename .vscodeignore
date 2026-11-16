@@ -21,3 +21,5 @@ licenses/**
 .vscode-test/**
 
 AGENTS.md
+
+eslint.config.mjs

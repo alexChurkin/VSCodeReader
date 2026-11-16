@@ -12,7 +12,7 @@ To replace an installed build of the same version:
 code --install-extension vscode-reader-0.1.0.vsix --force
 ```
 
-Then run **Developer: Reload Window**. The version stays at **0.1.0**; this release and its installer are updated after successful builds of `main`.
+Then run **Developer: Reload Window**. The title identifies the code revision by its Git commit SHA; the full commit is linked below. The extension version stays at **0.1.0**; this release and its installer are updated after successful builds of `main`.
 
 **Русский:** скачайте VSIX во вложениях, установите через **Extensions: Install from VSIX…** и откройте значок книги слева. Для обновления той же версии используйте команду выше с `--force`, затем **Developer: Reload Window**.
 

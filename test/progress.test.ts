@@ -9,7 +9,7 @@ const book: Book = { title: 'Progress', author: '', chapters: [
   { id: 'second', title: 'Second', text: 'b'.repeat(2500), anchors: {} }
 ], toc: [] };
 
-test('stable locations and percentages span chapter boundaries', () => {
+void test('stable locations and percentages span chapter boundaries', () => {
   assert.deepEqual(parseLocation(book, '1'), { chapter: 0, offset: 0 });
   assert.deepEqual(parseLocation(book, '3'), { chapter: 1, offset: 500 });
   assert.deepEqual(parseLocation(book, '100%'), { chapter: 1, offset: 2499 });
@@ -22,7 +22,7 @@ test('stable locations and percentages span chapter boundaries', () => {
   assert.equal(progress.screen, 3); assert.equal(progress.screens, 5);
   assert.equal(progress.percent, 50); assert.match(progressLabel(progress), /Page 3\/4/);
 });
-test('many resizes preserve the exact text anchor and stable location', () => {
+void test('many resizes preserve the exact text anchor and stable location', () => {
   const screen = new Screen(book, '', { chapter: 1, offset: 1234 });
   const original = screen.locator;
   for (const [width, height] of [[90, 30], [13, 5], [180, 50], [1, 1], [80, 24]]) {
@@ -32,7 +32,7 @@ test('many resizes preserve the exact text anchor and stable location', () => {
   }
   screen.move(1); assert.ok(screen.locator.offset > original.offset);
 });
-test('screen paging crosses chapter boundaries without resetting at book edges', () => {
+void test('screen paging crosses chapter boundaries without resetting at book edges', () => {
   const small: Book = { ...book, chapters: [
     { id: 'a', title: 'A', text: '0\n1\n2\n3\n4', anchors: {} },
     { id: 'b', title: 'B', text: '5\n6\n7', anchors: {} }
@@ -49,7 +49,7 @@ test('screen paging crosses chapter boundaries without resetting at book edges',
   screen.nextChapter(-1); assert.deepEqual(screen.locator, first);
 });
 
-test('text page numbers are stable across resizes; comics count real image pages', () => {
+void test('text page numbers are stable across resizes; comics count real image pages', () => {
   const screen = new Screen(book, '', { chapter: 1, offset: 500 });
   for (const [width, height] of [[80, 24], [12, 3], [140, 45]]) {
     screen.resize(width, height);

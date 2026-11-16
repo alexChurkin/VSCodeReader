@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import stringWidth from 'string-width';
 import { footerText, fitCells, terminalName, type HintMode } from '../src/footer';
 
-test('footer adapts to reading, hidden, modal and loading states', () => {
+void test('footer adapts to reading, hidden, modal and loading states', () => {
   const reading = footerText({ mode: 'reading', columns: 220, images: true, bookmarks: true });
   for (const hint of ['Space', 'g contents', '/ search', 'b bookmark', 'B bookmarks', 'i images', 'Esc hide', 'q close']) assert.ok(reading.includes(hint), hint);
   const plain = footerText({ mode: 'reading', columns: 220 });
@@ -16,7 +16,7 @@ test('footer adapts to reading, hidden, modal and loading states', () => {
   assert.match(footerText({ mode: 'reading', columns: 220, end: true }), /End of book/);
   assert.match(footerText({ mode: 'reading', columns: 80, message: 'Bookmark saved' }), /^Bookmark saved/);
 });
-test('hint lines never use the last terminal cell or split graphemes', () => {
+void test('hint lines never use the last terminal cell or split graphemes', () => {
   const modes: HintMode[] = ['reading', 'hidden', 'picker', 'search', 'location', 'name', 'image-loading'];
   for (const columns of [1, 2, 8, 20, 40, 80, 220]) for (const mode of modes) {
     assert.ok(stringWidth(footerText({ mode, columns, images: true, bookmarks: true })) <= Math.max(0, columns - 1));
@@ -25,7 +25,7 @@ test('hint lines never use the last terminal cell or split graphemes', () => {
   assert.equal(fitCells('e\u0301 text', 2), 'e\u0301…');
   assert.doesNotMatch(fitCells('\x1b[2J\nmessage', 20), /\x1b|\n/);
 });
-test('terminal tabs use book titles with custom templates and old default migration', () => {
+void test('terminal tabs use book titles with custom templates and old default migration', () => {
   assert.equal(terminalName('{title}', 'Alice', 'alice.epub'), 'Alice');
   assert.equal(terminalName('output', 'Alice', 'alice.epub'), 'Alice');
   assert.equal(terminalName('Read: {title} ({filename})', 'Alice', 'alice.epub'), 'Read: Alice (alice.epub)');
@@ -33,7 +33,7 @@ test('terminal tabs use book titles with custom templates and old default migrat
   assert.doesNotMatch(terminalName('{title}', '\x1b[2J\nTitle', 'file.txt'), /\x1b|\n/);
 });
 
-test('page status remains visible ahead of hints and feedback, including narrow terminals', () => {
+void test('page status remains visible ahead of hints and feedback, including narrow terminals', () => {
   const progress = { page: 12, pages: 47, percent: 24.3 };
   for (const mode of ['reading', 'search', 'location', 'picker', 'image-loading'] as HintMode[]) {
     const line = footerText({ mode, columns: 100, progress, message: 'Bookmark saved', images: true, bookmarks: true });

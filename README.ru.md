@@ -26,7 +26,7 @@
 2. Нажмите **значок книги** на левой панели Activity Bar: откроется **Reader → Library**.
 3. Нажмите **Open book…** и выберите файл. Для продолжения позже используйте **Continue reading**.
 
-После успешных проверок `main` автоматически обновляется единственный [GitHub Release 0.1.0](https://github.com/alexChurkin/VSCodeReader/releases/tag/v0.1.0), его VSIX и контрольная сумма SHA-256.
+После успешных проверок `main` автоматически обновляется единственный [GitHub Release 0.1.0](https://github.com/alexChurkin/VSCodeReader/releases/tag/v0.1.0), его VSIX и контрольная сумма SHA-256. В названии релиза указан текущий Git SHA из 12 символов, например `VSCodeReader 0.1.0 · code abc123def456`, а в описании — ссылка на полный коммит. Версия расширения и ссылка скачивания остаются постоянными.
 
 Версия остаётся **0.1.0**: каждая сборка заменяет `vscode-reader-0.1.0.vsix` и удаляет устаревшие VSIX проекта.
 
@@ -93,10 +93,14 @@
 ## Разработка и проверки
 
 ```sh
-npm run check        # typecheck, unit-тесты, сборка расширения и parser worker
+npm run lint         # ESLint для TypeScript, JavaScript и скриптов релиза; без предупреждений
+npm run lint:fix     # автоматические исправления линтера
+npm run check        # линтер, строгий typecheck, unit-тесты, сборка расширения и parser worker
 npm run test:host    # интеграционные проверки в VS Code 1.95.3
 npm run package      # VSIX без samples, тестов и node_modules
 ```
+
+Проект написан на TypeScript с VS Code API; скрипты работают на Node.js, сборка использует esbuild. ESLint проверяет рекомендуемые правила JavaScript/TypeScript, необработанные Promise, асинхронные callback и некорректный `await` с учётом типов. TypeScript дополнительно проверяет пропущенные возвраты и проваливание между ветками switch. Перед обновлением релиза GitHub Actions требует успешного `npm run check` и тестов в VS Code. Для редактора в workspace рекомендовано расширение ESLint. TypeScript закреплён на версии 6, совместимой с поддерживаемым диапазоном typescript-eslint.
 
 Host-тест запускает VS Code дважды и проверяет восстановление позиции и именованных закладок после полного перезапуска. При первом запуске он скачивает VS Code. На Linux нужны библиотеки Electron и дисплей (в CI используется `xvfb-run`). Переменная `VSCODE_TEST_VERSION` позволяет проверить другую версию VS Code. Тесты используют синтетические книги и сохранённый EPUB, без скачивания книг.
 

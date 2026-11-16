@@ -199,11 +199,13 @@
     "watch": "node esbuild.mjs --watch",
     "typecheck": "tsc --noEmit",
     "test": "node --import tsx --test test/*.test.ts",
-    "check": "npm run typecheck && npm test && npm run build",
+    "check": "npm run lint && npm run typecheck && npm test && npm run build",
     "vscode:prepublish": "npm run build",
     "package": "vsce package --no-dependencies --allow-missing-repository --out vscode-reader-0.1.0.vsix",
     "test:host": "npm run build && node scripts/test-host.mjs",
-    "prepackage": "node scripts/clean-packages.mjs"
+    "prepackage": "node scripts/clean-packages.mjs",
+    "lint": "eslint . --max-warnings 0",
+    "lint:fix": "npm run lint -- --fix"
   },
   "dependencies": {
     "domhandler": "6.0.1",
@@ -214,17 +216,24 @@
     "yauzl": "3.4.0"
   },
   "devDependencies": {
+    "@eslint/js": "10.0.1",
     "@types/node": "22.20.5",
     "@types/vscode": "1.95.0",
     "@types/yauzl": "3.4.0",
     "@vscode/test-electron": "3.1.0",
     "@vscode/vsce": "4.1.1",
     "esbuild": "0.28.2",
+    "eslint": "10.15.0",
+    "globals": "17.14.0",
     "tsx": "4.23.15",
-    "typescript": "7.0.2"
+    "typescript": "6.0.3",
+    "typescript-eslint": "8.72.2"
   },
   "overrides": {
     "@vscode/vsce": {
+      "minimatch": "^11.0.1"
+    },
+    "@typescript-eslint/typescript-estree": {
       "minimatch": "^11.0.1"
     }
   }

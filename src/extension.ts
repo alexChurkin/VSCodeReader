@@ -228,7 +228,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       if (session) { latest = session; remember(session.source, session.reader.snapshot.progress, true); }
     }),
     vscode.window.onDidCloseTerminal(terminal => {
-      for (const [id, session] of sessions) if (session.terminal === terminal) {
+      for (const session of sessions.values()) if (session.terminal === terminal) {
         session.reader.close(); removeSession(session);
       }
     })

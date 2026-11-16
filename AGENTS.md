@@ -1,6 +1,6 @@
 # Repository conventions
 
-- Keep the extension version at `0.1.0` in package.json and both root entries of package-lock.json. The user explicitly wants one continuously updated version; do not bump it.
+- Keep the extension version at `0.1.0` in package.json and both root entries of package-lock.json. The extension version stays fixed for now; the code revision must update automatically in every release title. Do not bump the extension version.
 - Produce only `vscode-reader-0.1.0.vsix`. Replace that artifact on each build and remove obsolete project VSIX files. Use `npm run package`, which enforces this policy.
 - Describe current functionality. Do not create release-history documents, historical changelog entries or references to superseded project versions.
 - Keep README.md in English as the primary README, and maintain its Russian translation in README.ru.md.
@@ -8,3 +8,5 @@
 - Name terminal tabs after the book by default and preserve the dim contextual footer. Closing a PTY must acknowledge exit and release the session; trash and `q` should work immediately.
 - Keep the current page, total pages and percentage visible in the bottom reading bar; page status takes priority over hints and notifications on narrow terminals.
 - Publish the installer as the single GitHub Release `v0.1.0` after successful main builds, replacing the VSIX and checksum assets. Do not treat a local VSIX or an Actions artifact alone as the release.
+- Include the current 12-character Git commit SHA in the GitHub Release title (for example `VSCodeReader 0.1.0 · code abc123def456`) and link the full commit in its description. Keep the stable download URL.
+- `npm run check` must include ESLint with zero warnings, strict TypeScript checks, unit tests and the production build. Fix lint findings rather than disabling rules across the project.
