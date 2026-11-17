@@ -6,6 +6,8 @@ Read books in VS Code in a tab that looks like console output. VSCodeReader uses
 
 The current **0.1.0** build supports EPUB, FictionBook, plain text, CBZ comics, HTML and Markdown. [Implementation plan (Russian)](docs/IMPLEMENTATION_PLAN.md) · [Architecture decisions (Russian)](docs/ADR-001-terminal-reader.md).
 
+![VSCodeReader Library sidebar and terminal book reader](media/vscode-reader-screenshot.png)
+
 ## Supported formats
 
 | Format | Support |

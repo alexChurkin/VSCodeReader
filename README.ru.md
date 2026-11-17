@@ -6,6 +6,8 @@
 
 Текущая сборка **0.1.0** поддерживает EPUB, FictionBook, обычный текст, комиксы CBZ, HTML и Markdown. [План реализации](docs/IMPLEMENTATION_PLAN.md) · [Архитектурные решения](docs/ADR-001-terminal-reader.md).
 
+![Боковая панель Library и чтение книги в терминале VSCodeReader](media/vscode-reader-screenshot.png)
+
 ## Поддерживаемые форматы
 
 | Формат | Поддержка |
